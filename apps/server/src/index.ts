@@ -1,10 +1,13 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import Fastify from 'fastify';
 import { loadConfig, CUE_RATES, type Config, type CueRate } from './config.js';
 import { AnthropicModel, StubModel, type CueModel } from './engine/model.js';
 import { Hub } from './hub.js';
 import { SupabasePlaybookSource } from './playbooks/supabase.js';
 import type { CallType, PlaybookSource } from './playbooks/source.js';
+import { loadReplayInput, runReplay } from './replay.js';
 import { RtmsSource } from './sources/rtms.js';
 import type { TranscriptSource } from './sources/types.js';
 import { urlValidation, verifySignature } from './webhook.js';
@@ -133,6 +136,44 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
   app.post('/api/call', { preHandler: guard }, async (req) => {
     const { json } = req.body as { json: { callId?: string | null; callType?: CallType } };
     return { ok: await hub.pickCall(json.callId ?? null, json.callType) };
+  });
+
+  // ---- Replay benchmark: runs a past call through the engine with the server's own keys. ----
+  const jobs = new Map<string, { status: 'running' | 'done' | 'error'; startedAt: number; summary?: unknown; error?: string; file?: string }>();
+  app.post('/api/replay', { preHandler: guard }, async (req, reply) => {
+    const { json } = req.body as { json: { callId: string; model?: string; rate?: CueRate; callType?: CallType } };
+    if (!cfg.databaseUrl) return reply.code(400).send({ error: 'HOURSBACK_DB_URL not set' });
+    if (!json?.callId) return reply.code(400).send({ error: 'callId required' });
+    const id = crypto.randomUUID().slice(0, 8);
+    jobs.set(id, { status: 'running', startedAt: Date.now() });
+    const modelId = json.model ?? cfg.cueModel;
+    void (async () => {
+      try {
+        const input = await loadReplayInput(json.callId, cfg.databaseUrl);
+        const result = await runReplay(input, {
+          cueModel: cfg.anthropicKey ? new AnthropicModel(cfg.anthropicKey, modelId) : new StubModel(),
+          stateModel: models.state,
+          hostName: cfg.hostName,
+          rate: json.rate && json.rate in CUE_RATES ? json.rate : cfg.cueRate,
+          callType: json.callType,
+        });
+        const dir = path.join(cfg.dataDir, 'replays');
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, `${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}_${json.callId.slice(0, 8)}_${result.summary.model}_${result.summary.cueRate}.json`);
+        fs.writeFileSync(file, JSON.stringify(result, null, 2));
+        jobs.set(id, { status: 'done', startedAt: jobs.get(id)!.startedAt, summary: result.summary, file });
+      } catch (err) {
+        jobs.set(id, { status: 'error', startedAt: jobs.get(id)!.startedAt, error: String(err).slice(0, 300) });
+      }
+    })();
+    return { jobId: id };
+  });
+  app.get('/api/replay/:id', { preHandler: guard }, async (req, reply) => {
+    const job = jobs.get((req.params as { id: string }).id);
+    if (!job) return reply.code(404).send({ error: 'no such job' });
+    if (job.status !== 'done' || !job.file) return job;
+    const full = JSON.parse(fs.readFileSync(job.file, 'utf8'));
+    return { ...job, markdown: full.markdown };
   });
 
   return Object.assign(app, { hub });
