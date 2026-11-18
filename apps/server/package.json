@@ -1,0 +1,24 @@
+{
+  "name": "@coach/server",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "summarise": "tsx scripts/summarise.ts",
+    "simulate": "tsx scripts/simulate.ts"
+  },
+  "dependencies": {
+    "@zoom/rtms": "1.1.0",
+    "fastify": "^5.0.0",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

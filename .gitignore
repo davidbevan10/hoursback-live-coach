@@ -1,0 +1,7 @@
+node_modules
+.env
+data/
+eval/transcripts/*
+!eval/transcripts/.gitkeep
+playbooks/*
+!playbooks/.gitkeep

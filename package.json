@@ -1,0 +1,14 @@
+{
+  "name": "live-coach",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "start": "npm run start -w apps/server"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}
