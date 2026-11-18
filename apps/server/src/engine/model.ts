@@ -25,7 +25,8 @@ export interface CueModel {
 export class AnthropicModel implements CueModel {
   private client: Anthropic;
   constructor(apiKey: string, readonly id: string) {
-    this.client = new Anthropic({ apiKey });
+    // A hung call blocks every later cue, so fail fast: one cue arriving late is worth nothing.
+    this.client = new Anthropic({ apiKey, timeout: 8000, maxRetries: 1 });
   }
 
   async complete(call: ModelCall): Promise<ModelResult> {

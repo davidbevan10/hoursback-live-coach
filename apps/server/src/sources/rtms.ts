@@ -31,7 +31,17 @@ export class RtmsSource implements TranscriptSource {
     });
 
     emit({ kind: 'session_start', meetingUuid: payload.meeting_uuid ?? payload.session_id, streamId });
-    client.join(payload);
+    let joined = false;
+    try {
+      joined = client.join(payload) !== false;
+    } catch (err) {
+      console.error('RTMS join threw', err);
+    }
+    if (!joined) {
+      // No transcript will ever arrive; end the session instead of showing a dead "live" call.
+      this.clients.delete(streamId);
+      emit({ kind: 'leave', reason: -1 });
+    }
   }
 
   stop(streamId: string) {

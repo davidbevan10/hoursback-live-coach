@@ -41,7 +41,10 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
         : null;
   const hub = new Hub(cfg, models, playbooks);
 
-  const app = Fastify({ logger: true });
+  // Never log query strings: the coach page is opened with ?key=<token>.
+  const app = Fastify({
+    logger: { serializers: { req: (req: any) => ({ method: req.method, url: String(req.url).split('?')[0] }) } },
+  });
   const streams = new Set<string>(); // by rtms_stream_id: webhook retries must not open a second session
 
   // Keep the raw body: the Zoom signature is computed over it.
@@ -64,12 +67,18 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
 
   app.post('/webhook', async (req, reply) => {
     const { raw, json } = req.body as { raw: string; json: any };
+    // An empty secret makes every signature forgeable, so nothing is accepted without one.
+    if (!cfg.zoomSecret) return reply.code(503).send({ error: 'ZOOM_WEBHOOK_SECRET_TOKEN not set' });
+    const signed = cfg.skipSignature || verifySignature(raw, req.headers, cfg.zoomSecret);
     if (json.event === 'endpoint.url_validation') {
-      return reply.send(urlValidation(json.payload.plainToken, cfg.zoomSecret));
+      // The validation answer is an HMAC with the same secret as the webhook signature. A signature
+      // input always contains colons ("v0:<ts>:<body>"), so only colon-free tokens of the shape Zoom
+      // sends are answered unsigned; that stops the answer being used to forge a real webhook.
+      const token = String(json.payload?.plainToken ?? '');
+      if (!signed && !/^[A-Za-z0-9_-]{8,64}$/.test(token)) return reply.code(401).send({ error: 'bad validation token' });
+      return reply.send(urlValidation(token, cfg.zoomSecret));
     }
-    if (!cfg.skipSignature && !verifySignature(raw, req.headers, cfg.zoomSecret)) {
-      return reply.code(401).send({ error: 'bad signature' });
-    }
+    if (!signed) return reply.code(401).send({ error: 'bad signature' });
     reply.code(200).send({ ok: true }); // respond first: slow responses cause Zoom retries and duplicate streams
 
     const { event, payload } = json;
@@ -80,6 +89,7 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
       void hub.start(streamId, payload.meeting_uuid ?? payload.session_id ?? streamId);
       source.start(payload, (e) => {
         hub.handle(streamId, e);
+        if (e.kind === 'leave') streams.delete(streamId); // lets a Zoom retry start it again
         if (e.kind !== 'transcript') app.log.info({ streamId, ...e }, 'RTMS EVENT');
       });
     } else if (STOP.includes(event) && streamId) {
@@ -135,7 +145,7 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
   });
   app.post('/api/call', { preHandler: guard }, async (req) => {
     const { json } = req.body as { json: { callId?: string | null; callType?: CallType } };
-    return { ok: await hub.pickCall(json.callId ?? null, json.callType) };
+    return { ok: await hub.pickCall('callId' in json ? (json.callId ?? null) : undefined, json.callType) };
   });
 
   // ---- Replay benchmark: runs a past call through the engine with the server's own keys. ----

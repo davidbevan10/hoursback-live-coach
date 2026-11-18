@@ -130,8 +130,11 @@ export class CoachSession {
         trigger = 'monologue';
       }
     } else {
-      this.hostRunWords = 0;
-      this.monologueFlagged = false;
+      // "Yeah", "right" and other murmurs while David talks don't end his run.
+      if (words >= 3) {
+        this.hostRunWords = 0;
+        this.monologueFlagged = false;
+      }
       const keyword = KEYWORDS.test(turn.text);
       if (keyword && since >= r.keywordGapMs) trigger = since >= r.cooldownMs ? 'turn' : 'keyword';
       else if (words >= MIN_PROSPECT_WORDS && since >= r.cooldownMs) trigger = 'turn';
@@ -238,14 +241,18 @@ function sameName(a: string, b: string) {
 export function refExists(ref: string, headings: string[]): boolean {
   const r = norm(ref.replace(/^(layer \d|prospect playbook|generic framework)\s*[:>-]\s*/i, ''));
   if (!r) return false;
-  const rt = new Set(r.split(' '));
+  const rWords = r.split(' ');
+  const rt = new Set(rWords);
   return headings.some((h) => {
     const n = norm(h);
     if (!n) return false;
-    if (n.includes(r) || r.includes(n)) return true;
-    const ht = n.split(' ');
-    const overlap = ht.filter((w) => rt.has(w)).length;
-    return overlap / Math.max(ht.length, 1) >= 0.6 && overlap >= 2;
+    if (n === r) return true;
+    const nWords = n.split(' ');
+    // A substring match only counts when the shorter side is a real phrase, so "the" or "budget" can't pass.
+    if (rWords.length >= 2 && n.includes(r)) return true;
+    if (nWords.length >= 2 && r.includes(n)) return true;
+    const overlap = nWords.filter((w) => rt.has(w)).length;
+    return overlap >= 2 && overlap / nWords.length >= 0.6;
   });
 }
 

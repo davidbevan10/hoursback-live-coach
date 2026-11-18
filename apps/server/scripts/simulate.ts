@@ -24,7 +24,11 @@ const post = (obj: unknown, headers?: Record<string, string>) => {
   return app.inject({ method: 'POST', url: '/webhook', payload: body, headers: headers ?? sign(body) });
 };
 
-const v = await post({ event: 'endpoint.url_validation', payload: { plainToken: 'abc' } }, { 'content-type': 'application/json' });
+const forged = await post({ event: 'endpoint.url_validation', payload: { plainToken: 'v0:123:{}' } }, { 'content-type': 'application/json' });
+console.log('signature-shaped validation token refused (401):', forged.statusCode === 401);
+const unsigned = await post({ event: 'endpoint.url_validation', payload: { plainToken: 'qgg8vlvZRS6UYooatFL8Aw' } }, { 'content-type': 'application/json' });
+console.log('unsigned Zoom-style validation answered:', unsigned.statusCode === 200);
+const v = await post({ event: 'endpoint.url_validation', payload: { plainToken: 'abc' } });
 const expected = crypto.createHmac('sha256', secret).update('abc').digest('hex');
 console.log('url_validation ok:', v.json().encryptedToken === expected);
 

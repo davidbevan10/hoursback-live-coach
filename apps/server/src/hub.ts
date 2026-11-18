@@ -176,11 +176,13 @@ export class Hub {
     return true;
   }
 
-  async pickCall(callId: string | null, callType?: CallType) {
+  /** callId undefined = keep the booking; null = "None" picked (generic framework only). */
+  async pickCall(callId: string | null | undefined, callType?: CallType) {
     const live = this.current();
     if (!live) return false;
     let bundle = live.session.bundle;
-    if (callId && this.playbooks) bundle = await this.playbooks.load(callId);
+    if (callId === null) bundle = EMPTY_BUNDLE(callType ?? bundle.callType);
+    else if (callId && this.playbooks) bundle = await this.playbooks.load(callId);
     if (callType) bundle = { ...bundle, callType };
     live.session.setBundle(bundle);
     live.log.write({ kind: 'call_picked', callId, callType: bundle.callType });

@@ -43,6 +43,19 @@ await check('refExists accepts real headings, loose numbering, rejects invention
   assert.ok(refExists('Pitfall: letting a vague answer pass', heads));
   assert.ok(!refExists('Our 30-day money-back guarantee', heads));
   assert.ok(!refExists('', heads));
+  for (const bad of ['the', 'Say', 'budget', 'Closing technique: assumptive close']) assert.ok(!refExists(bad, heads), bad);
+});
+
+await check('murmurs from the prospect do not reset David\'s talking run', async () => {
+  const m = fakeModel(none), clock = { t: 0 };
+  const s = session(m, clock);
+  const chunk = 'So what we do is we sit down with each person in the team and we map their week out properly';
+  let fired: Promise<void> | null = null;
+  for (let i = 0; i < 10 && !fired; i++) {
+    clock.t += 8000; fired = s.addUtterance('David Bevan', chunk);
+    if (!fired) { clock.t += 1000; s.addUtterance('Sam', 'Yeah.'); }
+  }
+  assert.ok(fired, 'monologue should fire despite murmurs'); await fired;
 });
 
 await check('short prospect turns do not trigger; long ones do; cooldown holds', async () => {

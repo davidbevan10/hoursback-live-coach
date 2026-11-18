@@ -20,6 +20,8 @@ export class SupabasePlaybookSource implements PlaybookSource {
     private windowAfterMin: number,
   ) {
     this.pool = new pg.Pool({ connectionString: databaseUrl, max: 3, ssl: { rejectUnauthorized: false } });
+    // Without a listener, a dropped idle connection is an uncaught error that kills the process mid-call.
+    this.pool.on('error', (err) => console.error('playbook db pool error', err.message));
   }
 
   async candidatesNear(at: Date): Promise<CallCandidate[]> {

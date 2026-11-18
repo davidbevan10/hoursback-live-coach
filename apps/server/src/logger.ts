@@ -8,11 +8,14 @@ export function openSessionLog(dataDir: string, meetingUuid: string) {
   const safe = meetingUuid.replace(/[^a-zA-Z0-9_-]/g, '_');
   const file = path.join(dataDir, `${new Date().toISOString().replace(/[:.]/g, '-')}_${safe}.jsonl`);
   const stream = fs.createWriteStream(file, { flags: 'a' });
+  let closed = false;
+  stream.on('error', (err) => console.error('session log error', err.message));
   return {
     file,
     write(e: CoachEvent | Record<string, unknown>) {
+      if (closed) return; // an event landing as the call ends must not crash the process
       stream.write(JSON.stringify({ receivedAt: Date.now(), ...e }) + '\n');
     },
-    close() { stream.end(); },
+    close() { closed = true; stream.end(); },
   };
 }

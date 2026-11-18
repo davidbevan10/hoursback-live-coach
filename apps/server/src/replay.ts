@@ -12,6 +12,7 @@ export interface ReplayInput extends RawCallMaterial {
 /** Load a past call for replay. call_notes are left out: they are written during and after the call and would leak the outcome. */
 export async function loadReplayInput(callId: string, databaseUrl: string): Promise<ReplayInput> {
   const pool = new pg.Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false }, max: 1 });
+  pool.on('error', (err) => console.error('replay db pool error', err.message));
   try {
     const c = (await pool.query(`select id, business, display_name, transcript from prospect_calls where id = $1`, [callId])).rows[0];
     if (!c?.transcript) throw new Error('No transcript on that call');
