@@ -40,3 +40,13 @@ lets David switch booking or call type mid-call.
 
 Several versions often sit side by side ("v2", "v4 FINAL"). The newest by `created_at` wins.
 Store the one you mean to use last.
+
+## David's pitfalls (Layer 0)
+
+`apps/server/layer1/pitfalls.md` is always loaded first. It distils the recurring mistakes
+from the 20 AI call debriefs on `prospect_calls.debrief` (improvement_tips) and the lowest
+debrief scores (urgency, budget signal, discovery depth). The coach treats catching one of
+these as its highest-value cue, cites it as "Pitfall: ...", and also checks itself when David
+has talked for over a minute and at the 3, 10 and 14 minute marks. The call's playbook still
+wins on what to say (for example on naming a price). Patterns only: no prospect details.
+Refresh it as more debriefs build up.

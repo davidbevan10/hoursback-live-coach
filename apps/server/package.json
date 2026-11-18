@@ -10,7 +10,10 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "summarise": "tsx scripts/summarise.ts",
-    "simulate": "tsx scripts/simulate.ts"
+    "simulate": "tsx scripts/simulate.ts",
+    "selftest": "tsx scripts/selftest.ts",
+    "demo": "tsx scripts/demo.ts",
+    "replay": "tsx ../../eval/replay.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",

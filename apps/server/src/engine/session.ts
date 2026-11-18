@@ -5,12 +5,26 @@ import type { CueModel } from './model.js';
 import { cueUserMessage, stateUserMessage, systemBlocks, type Turn } from './prompt.js';
 import { CueSchema, StateSchema, extractJson, type CallState, type Cue } from './schema.js';
 
+export type Trigger = 'turn' | 'keyword' | 'monologue' | 'clock';
+
+const TRIGGER_TEXT: Record<Trigger, string> = {
+  turn: 'the prospect just finished a turn',
+  keyword: 'the prospect said something that often needs handling (price, budget, someone else deciding, an incumbent, a next step)',
+  monologue: 'DAVID has been talking for over a minute without handing back to the prospect',
+  clock: 'a time checkpoint: check the call is on track (preamble over, must-asks covered, close and next step in time)',
+};
+
+/** Minutes at which to check the call is on track even if nothing else fires. */
+const CLOCK_CHECKS = [3, 10, 14];
+/** About 70 seconds of David speaking without the prospect getting a word in. */
+const MONOLOGUE_WORDS = 170;
+
 export type ShownCue = Cue & {
   id: string;
   at: number;
   model: string;
   latencyMs: number;
-  triggeredBy: 'turn' | 'keyword';
+  triggeredBy: Trigger;
   cueRate: CueRate;
   playbookVersion: string | null;
 };
@@ -19,7 +33,7 @@ export type SessionEvent =
   | { kind: 'turn'; turn: Turn }
   | { kind: 'cue'; cue: ShownCue }
   | { kind: 'state'; state: CallState }
-  | { kind: 'eval'; at: number; outcome: 'none' | 'below_threshold' | 'invalid' | 'no_ref' | 'shown' | 'error'; detail?: string; latencyMs?: number; triggeredBy: 'turn' | 'keyword' }
+  | { kind: 'eval'; at: number; outcome: 'none' | 'below_threshold' | 'invalid' | 'no_ref' | 'shown' | 'error'; detail?: string; latencyMs?: number; triggeredBy: Trigger }
   | { kind: 'bundle'; bundle: Pick<PlaybookBundle, 'callId' | 'label' | 'callType' | 'sector' | 'warnings'> & { playbookTitle: string | null } };
 
 /** Words that justify evaluating early, inside the cooldown (brief, section 5). */
@@ -54,6 +68,9 @@ export class CoachSession {
   private blocks: { rules: string; grounding: string };
   private headings: string[];
   private seq = 0;
+  private hostRunWords = 0;
+  private monologueFlagged = false;
+  private clockDone = new Set<number>();
 
   constructor(bundle: PlaybookBundle, private deps: SessionDeps) {
     this.cueRate = deps.cueRate;
@@ -100,18 +117,33 @@ export class CoachSession {
       this.stateInFlight = this.updateState().finally(() => (this.stateInFlight = null));
     }
 
-    if (role !== 'prospect') return null;
-    const words = turn.text.split(/\s+/).length;
-    const keyword = KEYWORDS.test(turn.text);
-    if (words < MIN_PROSPECT_WORDS && !keyword) return null;
-
     const r = CUE_RATES[this.cueRate];
     const since = now - this.lastEvalAt;
-    const due = since >= r.cooldownMs || (keyword && since >= r.keywordGapMs);
-    if (!due || this.evalInFlight) return null;
+    const elapsedMin = (now - this.startedAt) / 60_000;
+    const words = turn.text.split(/\s+/).length;
+    let trigger: Trigger | null = null;
+
+    if (role === 'host') {
+      this.hostRunWords += words;
+      if (this.hostRunWords >= MONOLOGUE_WORDS && !this.monologueFlagged) {
+        this.monologueFlagged = true;
+        trigger = 'monologue';
+      }
+    } else {
+      this.hostRunWords = 0;
+      this.monologueFlagged = false;
+      const keyword = KEYWORDS.test(turn.text);
+      if (keyword && since >= r.keywordGapMs) trigger = since >= r.cooldownMs ? 'turn' : 'keyword';
+      else if (words >= MIN_PROSPECT_WORDS && since >= r.cooldownMs) trigger = 'turn';
+    }
+
+    const checkpoint = CLOCK_CHECKS.find((m) => elapsedMin >= m && !this.clockDone.has(m));
+    if (!trigger && checkpoint !== undefined && since >= r.keywordGapMs) trigger = 'clock';
+    if (!trigger || this.evalInFlight) return null;
+    if (checkpoint !== undefined) this.clockDone.add(checkpoint);
 
     this.lastEvalAt = now;
-    started = this.evaluate(keyword && since < r.cooldownMs ? 'keyword' : 'turn').finally(() => (this.evalInFlight = null));
+    started = this.evaluate(trigger).finally(() => (this.evalInFlight = null));
     this.evalInFlight = started;
     return started;
   }
@@ -127,12 +159,12 @@ export class CoachSession {
     return recent.length >= 4 ? recent : this.turns.slice(-4);
   }
 
-  private async evaluate(triggeredBy: 'turn' | 'keyword') {
+  private async evaluate(triggeredBy: Trigger) {
     const at = this.now();
     try {
       const res = await this.deps.cueModel.complete({
         ...this.blocks,
-        user: cueUserMessage({ turns: this.window(), state: this.state, recentCues: this.cues.slice(-3), elapsedMin: (at - this.startedAt) / 60_000 }),
+        user: cueUserMessage({ turns: this.window(), state: this.state, recentCues: this.cues.slice(-3), elapsedMin: (at - this.startedAt) / 60_000, trigger: TRIGGER_TEXT[triggeredBy] }),
         maxTokens: 300,
       });
       const parsed = CueSchema.safeParse(extractJson(res.text));

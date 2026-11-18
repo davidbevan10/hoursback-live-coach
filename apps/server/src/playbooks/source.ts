@@ -44,7 +44,7 @@ function read(rel: string) {
 
 /** Layer 1: generic frameworks, static, prompt-cached. */
 export function layer1Text(callType: CallType, sector: Sector | null): string {
-  const parts: string[] = [];
+  const parts: string[] = [read('pitfalls.md')];
   if (callType === 'sme_discovery') parts.push(read('sme-discovery-15.md'));
   if (callType === 'enterprise_intro') parts.push(read('enterprise-intro-20.md'));
   if (callType === 'other') {
