@@ -10,7 +10,7 @@ export function openSessionLog(dataDir: string, meetingUuid: string) {
   const stream = fs.createWriteStream(file, { flags: 'a' });
   return {
     file,
-    write(e: CoachEvent) {
+    write(e: CoachEvent | Record<string, unknown>) {
       stream.write(JSON.stringify({ receivedAt: Date.now(), ...e }) + '\n');
     },
     close() { stream.end(); },

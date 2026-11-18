@@ -5,3 +5,5 @@ eval/transcripts/*
 !eval/transcripts/.gitkeep
 playbooks/*
 !playbooks/.gitkeep
+eval/out/
+eval/gold/
