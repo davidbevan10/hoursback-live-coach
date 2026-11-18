@@ -29,7 +29,7 @@ export class SupabasePlaybookSource implements PlaybookSource {
       `select p.id, p.scheduled_at, coalesce(p.display_name, left(p.business, 60), 'Unnamed booking') as label,
               exists (select 1 from prospect_documents d where d.prospect_call_id = p.id and d.kind = 'playbook') as has_playbook
          from prospect_calls p
-        where p.scheduled_at between $1::timestamptz - make_interval(mins => $3) and $1::timestamptz + make_interval(mins => $2)
+        where p.scheduled_at between $1::timestamptz - make_interval(mins => $3::int) and $1::timestamptz + make_interval(mins => $2::int)
         order by abs(extract(epoch from (p.scheduled_at - $1::timestamptz)))
         limit 5`,
       [at.toISOString(), this.windowBeforeMin, this.windowAfterMin],
