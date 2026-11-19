@@ -44,6 +44,10 @@ await check('refExists accepts real headings, loose numbering, rejects invention
   assert.ok(!refExists('Our 30-day money-back guarantee', heads));
   assert.ok(!refExists('', heads));
   for (const bad of ['the', 'Say', 'budget', 'Closing technique: assumptive close']) assert.ok(!refExists(bad, heads), bad);
+  // Styled section titles that aren't headings still count if the text is really there.
+  const g = 'run sheet 30 minutes 0 3 open let him lead';
+  assert.ok(refExists('Run sheet - 30 minutes', [], g));
+  assert.ok(!refExists('Run sheet - 45 minutes', [], g));
 });
 
 await check('murmurs from the prospect do not reset David\'s talking run', async () => {

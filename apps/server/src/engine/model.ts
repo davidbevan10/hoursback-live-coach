@@ -29,7 +29,7 @@ export class AnthropicModel implements CueModel {
     this.client = new Anthropic({ apiKey, timeout: 12_000, maxRetries: 1 });
   }
 
-  /** Some models refuse `thinking: disabled`. The first refusal switches this instance to low-effort mode for good. */
+  /** Some models (Sonnet 5.5) refuse `thinking: disabled` and ask for `between_tools`, which also means no thinking here. The first refusal switches this instance for good. */
   private thinkingOff = true;
 
   private request(call: ModelCall) {
@@ -42,11 +42,11 @@ export class AnthropicModel implements CueModel {
       messages: [{ role: 'user' as const, content: call.user }],
     };
     // Newer models think before answering by default. Thinking eats a small token budget and the
-    // reply arrives with no JSON in it, so it is off where the model allows; otherwise keep the
-    // effort low and give it room to think and still answer.
+    // reply arrives with no JSON in it, so it is off. Models that refuse "disabled" accept
+    // "between_tools", which with no tools in play also means no thinking.
     return this.thinkingOff
       ? this.client.messages.create({ ...base, max_tokens: call.maxTokens, thinking: { type: 'disabled' } })
-      : this.client.messages.create({ ...base, max_tokens: Math.max(call.maxTokens * 6, 2000), output_config: { effort: 'low' } });
+      : this.client.messages.create({ ...base, max_tokens: Math.max(call.maxTokens * 2, 600), thinking: { type: 'between_tools' } });
   }
 
   async complete(call: ModelCall): Promise<ModelResult> {
@@ -56,7 +56,7 @@ export class AnthropicModel implements CueModel {
       res = await this.request(call);
     } catch (err) {
       if (this.thinkingOff && err instanceof Anthropic.BadRequestError) {
-        console.log(JSON.stringify({ msg: `MODEL ${this.id} refused thinking:disabled, switching to low effort: ${String(err.message).slice(0, 200)}` }));
+        console.log(JSON.stringify({ msg: `MODEL ${this.id} refused thinking:disabled, switching to thinking:between_tools: ${String(err.message).slice(0, 200)}` }));
         this.thinkingOff = false;
         res = await this.request(call);
       } else {

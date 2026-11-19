@@ -67,6 +67,7 @@ export class CoachSession {
   private lastSpeaker: string | null = null;
   private blocks: { rules: string; grounding: string };
   private headings: string[];
+  private groundingNorm = '';
   private seq = 0;
   private hostRunWords = 0;
   private monologueFlagged = false;
@@ -78,6 +79,7 @@ export class CoachSession {
     this.bundle = bundle;
     this.blocks = systemBlocks(bundle, deps.hostName);
     this.headings = headingsOf(this.blocks.grounding);
+    this.groundingNorm = norm(this.blocks.grounding);
   }
 
   private now() {
@@ -89,6 +91,7 @@ export class CoachSession {
     this.bundle = bundle;
     this.blocks = systemBlocks(bundle, this.deps.hostName);
     this.headings = headingsOf(this.blocks.grounding);
+    this.groundingNorm = norm(this.blocks.grounding);
     this.deps.onEvent({ kind: 'bundle', bundle: summary(bundle) });
   }
 
@@ -187,7 +190,7 @@ export class CoachSession {
         this.deps.onEvent({ kind: 'eval', at, outcome: 'below_threshold', detail: `${cue.confidence} ${cue.headline}`, latencyMs: res.latencyMs, triggeredBy });
         return;
       }
-      if (!refExists(cue.playbook_ref, this.headings)) {
+      if (!refExists(cue.playbook_ref, this.headings, this.groundingNorm)) {
         this.deps.onEvent({ kind: 'eval', at, outcome: 'no_ref', detail: cue.playbook_ref, latencyMs: res.latencyMs, triggeredBy });
         return;
       }
@@ -241,10 +244,13 @@ function sameName(a: string, b: string) {
 }
 
 /** The model must cite a real heading. Loose match: models trim numbering or punctuation. */
-export function refExists(ref: string, headings: string[]): boolean {
+export function refExists(ref: string, headings: string[], groundingNorm = ''): boolean {
   const r = norm(ref.replace(/^(layer \d|prospect playbook|generic framework)\s*[:>-]\s*/i, ''));
   if (!r) return false;
   const rWords = r.split(' ');
+  // Many playbooks title their sections with styled text, not real headings. A reference of three
+  // or more words that appears word for word in the grounding is real text, so it counts.
+  if (rWords.length >= 3 && groundingNorm.includes(r)) return true;
   const rt = new Set(rWords);
   return headings.some((h) => {
     const n = norm(h);
