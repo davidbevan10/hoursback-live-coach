@@ -142,6 +142,9 @@ export class CoachSession {
 
     const checkpoint = CLOCK_CHECKS.find((m) => elapsedMin >= m && !this.clockDone.has(m));
     if (!trigger && checkpoint !== undefined && since >= r.keywordGapMs) trigger = 'clock';
+    // Don't stack cues: after one is shown, only urgent triggers may check again until the gap passes.
+    const lastShown = this.cues.at(-1)?.at ?? -Infinity;
+    if (trigger && (trigger === 'turn' || trigger === 'clock') && now - lastShown < r.minShownGapMs) trigger = null;
     if (!trigger || this.evalInFlight) return null;
     if (checkpoint !== undefined) this.clockDone.add(checkpoint);
 

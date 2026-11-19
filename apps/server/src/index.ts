@@ -268,7 +268,7 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
   const calls = (process.env.REPLAY_CALLS ?? '').split(',').map((x) => x.trim()).filter(Boolean);
   const replayModels = (process.env.REPLAY_MODELS ?? cfg.cueModel).split(',').map((x) => x.trim()).filter(Boolean);
   if (calls.length && cfg.databaseUrl && cfg.anthropicKey) {
-    const marker = path.join(replayDir(), `.done-${crypto.createHash('sha256').update(calls.join(',') + '|' + replayModels.join(',')).digest('hex').slice(0, 12)}`);
+    const marker = path.join(replayDir(), `.done-${crypto.createHash('sha256').update(calls.join(',') + '|' + replayModels.join(',') + '|' + (process.env.REPLAY_TAG ?? '')).digest('hex').slice(0, 12)}`);
     if (!fs.existsSync(marker)) {
       void (async () => {
         fs.mkdirSync(replayDir(), { recursive: true });

@@ -26,23 +26,43 @@ export class AnthropicModel implements CueModel {
   private client: Anthropic;
   constructor(apiKey: string, readonly id: string) {
     // A hung call blocks every later cue, so fail fast: one cue arriving late is worth nothing.
-    this.client = new Anthropic({ apiKey, timeout: 8000, maxRetries: 1 });
+    this.client = new Anthropic({ apiKey, timeout: 12_000, maxRetries: 1 });
+  }
+
+  /** Some models refuse `thinking: disabled`. The first refusal switches this instance to low-effort mode for good. */
+  private thinkingOff = true;
+
+  private request(call: ModelCall) {
+    const base = {
+      model: this.id,
+      system: [
+        { type: 'text' as const, text: call.rules },
+        { type: 'text' as const, text: call.grounding, cache_control: { type: 'ephemeral' as const } },
+      ],
+      messages: [{ role: 'user' as const, content: call.user }],
+    };
+    // Newer models think before answering by default. Thinking eats a small token budget and the
+    // reply arrives with no JSON in it, so it is off where the model allows; otherwise keep the
+    // effort low and give it room to think and still answer.
+    return this.thinkingOff
+      ? this.client.messages.create({ ...base, max_tokens: call.maxTokens, thinking: { type: 'disabled' } })
+      : this.client.messages.create({ ...base, max_tokens: Math.max(call.maxTokens * 6, 2000), output_config: { effort: 'low' } });
   }
 
   async complete(call: ModelCall): Promise<ModelResult> {
     const t0 = Date.now();
-    const res = await this.client.messages.create({
-      model: this.id,
-      max_tokens: call.maxTokens,
-      // Newer models think before answering by default. Thinking eats the small token budget and
-      // the reply arrives with no JSON in it, so it is off: these are short, fast judgement calls.
-      thinking: { type: 'disabled' },
-      system: [
-        { type: 'text', text: call.rules },
-        { type: 'text', text: call.grounding, cache_control: { type: 'ephemeral' } },
-      ],
-      messages: [{ role: 'user', content: call.user }],
-    });
+    let res;
+    try {
+      res = await this.request(call);
+    } catch (err) {
+      if (this.thinkingOff && err instanceof Anthropic.BadRequestError) {
+        console.log(JSON.stringify({ msg: `MODEL ${this.id} refused thinking:disabled, switching to low effort: ${String(err.message).slice(0, 200)}` }));
+        this.thinkingOff = false;
+        res = await this.request(call);
+      } else {
+        throw err;
+      }
+    }
     const text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
     if (!text.includes('{')) {
       throw new Error(`no JSON in reply (stop_reason ${res.stop_reason}, blocks ${res.content.map((b) => b.type).join('+') || 'none'}): ${text.slice(0, 60)}`);

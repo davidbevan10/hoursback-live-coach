@@ -2,10 +2,16 @@
 
 export type CueRate = 'conservative' | 'balanced' | 'proactive';
 
-export const CUE_RATES: Record<CueRate, { minConfidence: number; cooldownMs: number; keywordGapMs: number }> = {
-  conservative: { minConfidence: 0.75, cooldownMs: 12_000, keywordGapMs: 6_000 },
-  balanced: { minConfidence: 0.65, cooldownMs: 10_000, keywordGapMs: 5_000 },
-  proactive: { minConfidence: 0.55, cooldownMs: 6_000, keywordGapMs: 4_000 },
+/**
+ * cooldownMs / keywordGapMs: how often the coach may *check* for a cue.
+ * minShownGapMs: how long after a cue is shown before ordinary turns may produce another. Price,
+ * budget and decision-maker keywords and the talking-too-long check can still break through.
+ * The first replay benchmark (19 Nov) showed cues on most turns without this gap.
+ */
+export const CUE_RATES: Record<CueRate, { minConfidence: number; cooldownMs: number; keywordGapMs: number; minShownGapMs: number }> = {
+  conservative: { minConfidence: 0.8, cooldownMs: 12_000, keywordGapMs: 6_000, minShownGapMs: 90_000 },
+  balanced: { minConfidence: 0.7, cooldownMs: 10_000, keywordGapMs: 5_000, minShownGapMs: 60_000 },
+  proactive: { minConfidence: 0.6, cooldownMs: 6_000, keywordGapMs: 4_000, minShownGapMs: 35_000 },
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
