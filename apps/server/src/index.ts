@@ -41,6 +41,14 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
         : null;
   const hub = new Hub(cfg, models, playbooks);
 
+  // Check the playbook database once at boot, so a bad password shows in the logs straight away.
+  if (playbooks && 'recent' in playbooks) {
+    (playbooks as SupabasePlaybookSource)
+      .recent(1)
+      .then(() => console.log(JSON.stringify({ msg: 'PLAYBOOK DB OK' })))
+      .catch((err) => console.log(JSON.stringify({ msg: 'PLAYBOOK DB FAILED', error: String(err).slice(0, 160) })));
+  }
+
   // Never log query strings: the coach page is opened with ?key=<token>.
   const app = Fastify({
     logger: { serializers: { req: (req: any) => ({ method: req.method, url: String(req.url).split('?')[0] }) } },
