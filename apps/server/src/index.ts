@@ -46,7 +46,7 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
     (playbooks as SupabasePlaybookSource)
       .recent(1)
       .then(() => console.log(JSON.stringify({ msg: 'PLAYBOOK DB OK' })))
-      .catch((err) => console.log(JSON.stringify({ msg: 'PLAYBOOK DB FAILED', error: String(err).slice(0, 160) })));
+      .catch((err) => console.log(JSON.stringify({ msg: `PLAYBOOK DB FAILED: ${String(err).slice(0, 160)}` })));
   }
 
   // Never log query strings: the coach page is opened with ?key=<token>.
