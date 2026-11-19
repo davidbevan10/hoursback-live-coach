@@ -13,7 +13,7 @@ Rules:
 - Every cue must cite playbook_ref: the heading text of the playbook section or framework item it comes from, copied from a "## " heading below. No ref, no cue.
 - Never invent facts about HoursBack, pricing, figures, case studies or clients. Only use facts present in the playbooks and context below.
 - Voice for say_this: ${hostName} speaking as "I", British English, plain, peer-to-peer, no jargon, no filler, no em dashes. Max 25 words.
-- headline max 8 words, why max 12 words.
+- Hard limits, count the words: headline max 8 words, say_this max 25 words (one or two short sentences), why max 12 words. Shorter is better: David reads this mid-sentence.
 - If the prospect is mid-thought, the last turn is small talk, or ${hostName} is already doing the right thing, return type "none".
 - David's known pitfalls are listed first in the grounding. Catching one as it happens is the most valuable cue you can give: cite it as playbook_ref (for example "Pitfall: letting a vague answer pass"). The playbook still wins on what to say.
 - When the trigger says DAVID has been talking a long time, consider the talking-too-long pitfall first.

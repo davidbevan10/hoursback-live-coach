@@ -2,13 +2,22 @@ import { z } from 'zod';
 
 const words = (max: number) => (s: string) => s.trim().split(/\s+/).filter(Boolean).length <= max;
 
-/** One cue, exactly the brief's section 5 schema. Anything that fails validation is dropped, never shown. */
+/** Cut to n words. Used on the headline and the "why" line, where a few extra words aren't worth losing the cue over. */
+const trimWords = (n: number) => (s: string) => {
+  const w = s.trim().split(/\s+/).filter(Boolean);
+  return w.length <= n ? s.trim() : w.slice(0, n).join(' ').replace(/[,;:-]$/, '') + '…';
+};
+
+/**
+ * One cue, the brief's section 5 schema. The headline and "why" are trimmed if long; the line to
+ * say is never cut mid-sentence, so a say_this over 35 words drops the cue.
+ */
 export const CueSchema = z
   .object({
     type: z.enum(['objection', 'buying_signal', 'probe', 'stage_shift', 'none']),
-    headline: z.string().max(80).refine(words(10), 'headline over 8 words'),
-    say_this: z.string().max(240).refine(words(30), 'say_this over 25 words'),
-    why: z.string().max(120).refine(words(15), 'why over 12 words'),
+    headline: z.string().max(200).transform(trimWords(10)),
+    say_this: z.string().max(300).refine(words(35), 'say_this over 35 words'),
+    why: z.string().max(300).transform(trimWords(15)),
     playbook_ref: z.string().max(160),
     confidence: z.number().min(0).max(1),
   })
