@@ -93,6 +93,17 @@ export async function runReplay(input: ReplayInput, opts: { cueModel: CueModel; 
     invalid: count('invalid'),
     noRef: count('no_ref'),
     errors: count('error'),
+    dropReasons: Object.entries(
+      evals
+        .filter((e) => e.outcome === 'invalid' || e.outcome === 'no_ref' || e.outcome === 'error')
+        .reduce<Record<string, number>>((acc, e) => {
+          const k = `${e.outcome}: ${(e.detail ?? '').slice(0, 70)}`;
+          acc[k] = (acc[k] ?? 0) + 1;
+          return acc;
+        }, {}),
+    )
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4),
     latencyP50: pct(lat, 50),
     latencyP95: pct(lat, 95),
     wallSeconds: Math.round((Date.now() - t0) / 1000),
