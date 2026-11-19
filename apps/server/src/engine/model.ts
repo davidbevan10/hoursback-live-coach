@@ -34,6 +34,9 @@ export class AnthropicModel implements CueModel {
     const res = await this.client.messages.create({
       model: this.id,
       max_tokens: call.maxTokens,
+      // Newer models think before answering by default. Thinking eats the small token budget and
+      // the reply arrives with no JSON in it, so it is off: these are short, fast judgement calls.
+      thinking: { type: 'disabled' },
       system: [
         { type: 'text', text: call.rules },
         { type: 'text', text: call.grounding, cache_control: { type: 'ephemeral' } },
@@ -41,6 +44,9 @@ export class AnthropicModel implements CueModel {
       messages: [{ role: 'user', content: call.user }],
     });
     const text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+    if (!text.includes('{')) {
+      throw new Error(`no JSON in reply (stop_reason ${res.stop_reason}, blocks ${res.content.map((b) => b.type).join('+') || 'none'}): ${text.slice(0, 60)}`);
+    }
     return {
       text,
       model: this.id,
