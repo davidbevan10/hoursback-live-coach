@@ -15,6 +15,7 @@ interface Live {
   candidates: CallCandidate[];
   log: ReturnType<typeof openSessionLog>;
   feedback: Record<string, string>;
+  stats: Record<string, number>;
   ended: boolean;
 }
 
@@ -110,6 +111,7 @@ export class Hub {
       candidates: [],
       log,
       feedback: {},
+      stats: {},
       ended: false,
       session: new CoachSession(bundle, {
         cueModel: this.models.cue,
@@ -142,6 +144,9 @@ export class Hub {
     const live = this.sessions.get(streamId);
     if (!live) return;
     if (ev.kind !== 'turn') live.log.write({ ...ev, kind: `coach_${ev.kind}` });
+    live.stats[ev.kind === 'eval' ? `eval_${ev.outcome}` : ev.kind] = (live.stats[ev.kind === 'eval' ? `eval_${ev.outcome}` : ev.kind] ?? 0) + 1;
+    // Operational trace for the Railway logs: outcomes and timings only, never what anyone said.
+    if (ev.kind === 'eval') console.log(JSON.stringify({ msg: 'COACH EVAL', streamId, outcome: ev.outcome, trigger: ev.triggeredBy, latencyMs: ev.latencyMs, detail: ev.outcome === 'error' || ev.outcome === 'invalid' ? ev.detail?.slice(0, 200) : undefined }));
     if (streamId === this.currentId) this.broadcast(ev.kind, ev);
   }
 
@@ -151,6 +156,7 @@ export class Hub {
     live.ended = true;
     void live.session.settle().finally(() => {
       live.log.write({ kind: 'coach_end', cues: live.session.cues.length, feedback: live.feedback });
+      console.log(JSON.stringify({ msg: 'COACH SESSION END', streamId, minutes: +((Date.now() - live.startedAt) / 60000).toFixed(1), stats: live.stats, feedback: Object.values(live.feedback), bundle: live.session.bundle.callId ? 'booking' : 'none' }));
       live.log.close();
     });
     if (streamId === this.currentId) this.broadcast('ended', { streamId });
