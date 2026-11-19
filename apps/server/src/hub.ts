@@ -37,6 +37,12 @@ export class Hub {
   private sessions = new Map<string, Live>();
   private listeners = new Set<Listener>();
   private currentId: string | null = null;
+  /** A booking chosen on the page before the call starts (e.g. from a link with ?call=<id>). Used by the next session within 3 hours. */
+  private preselect: { callId: string; at: number } | null = null;
+
+  preselectCall(callId: string) {
+    this.preselect = { callId, at: Date.now() };
+  }
 
   constructor(
     private cfg: Config,
@@ -138,7 +144,10 @@ export class Hub {
       let loaded: PlaybookBundle;
       try {
         live.candidates = await this.playbooks.candidatesNear(new Date(startedAt));
-        loaded = live.candidates[0] ? await this.playbooks.load(live.candidates[0].id) : EMPTY_BUNDLE();
+        const pre = this.preselect && Date.now() - this.preselect.at < 3 * 60 * 60_000 ? this.preselect.callId : null;
+        this.preselect = null;
+        const chosen = pre ?? live.candidates[0]?.id;
+        loaded = chosen ? await this.playbooks.load(chosen) : EMPTY_BUNDLE();
       } catch (err) {
         loaded = { ...EMPTY_BUNDLE(), warnings: [`Could not load playbooks: ${String(err).slice(0, 140)}`] };
       }

@@ -154,10 +154,12 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
 
   app.get('/', { preHandler: guard }, async (req, reply) => {
     const q = req.query as Record<string, string>;
+    // (Re)issue the cookie as Lax so a link from the HoursBack admin (another site) still opens the
+    // page signed in. Lax is still not sent on cross-site POSTs, which is what matters for the API.
+    reply.header('set-cookie', `${COOKIE}=${encodeURIComponent(cfg.coachToken)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`);
     if (q.key) {
-      // Swap the key in the URL for a cookie, so it isn't left in the address bar or history.
-      reply.header('set-cookie', `${COOKIE}=${encodeURIComponent(q.key)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=31536000`);
-      return reply.redirect('/');
+      // Swap the key in the URL for the cookie, so it isn't left in the address bar or history.
+      return reply.redirect(q.call ? `/?call=${encodeURIComponent(q.call)}` : '/');
     }
     reply.header('cache-control', 'no-store').header('x-robots-tag', 'noindex').type('text/html').send(COACH_PAGE);
   });
@@ -182,6 +184,15 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
     const { json } = req.body as { json: { cueRate: CueRate } };
     return { ok: json.cueRate in CUE_RATES && hub.setCueRate(json.cueRate) };
   });
+  app.post('/api/preselect', { preHandler: guard }, async (req) => {
+    const { json } = req.body as { json: { callId: string } };
+    if (!/^[0-9a-f-]{36}$/i.test(json?.callId ?? '')) return { ok: false };
+    hub.preselectCall(json.callId);
+    // If a call is already live, switch it now too.
+    if (hub.current()) await hub.pickCall(json.callId);
+    return { ok: true };
+  });
+
   app.post('/api/call', { preHandler: guard }, async (req) => {
     const { json } = req.body as { json: { callId?: string | null; callType?: CallType } };
     return { ok: await hub.pickCall('callId' in json ? (json.callId ?? null) : undefined, json.callType) };
@@ -224,6 +235,63 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
     const full = JSON.parse(fs.readFileSync(job.file, 'utf8'));
     return { ...job, markdown: full.markdown };
   });
+
+  // ---- Replay reports: a private list and a viewer. ----
+  const replayDir = () => path.join(cfg.dataDir, 'replays');
+  const escapeHtml = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+  app.get('/replays', { preHandler: guard }, async (_req, reply) => {
+    const files = fs.existsSync(replayDir()) ? fs.readdirSync(replayDir()).filter((f) => f.endsWith('.json')).sort().reverse() : [];
+    const rows = files.map((f) => {
+      try {
+        const s = JSON.parse(fs.readFileSync(path.join(replayDir(), f), 'utf8')).summary;
+        return `<tr><td><a href="/replays/${encodeURIComponent(f)}">${escapeHtml(s.label)}</a></td><td>${escapeHtml(s.model)}</td><td>${s.callType}</td><td>${s.playbook ? 'yes' : 'no'}</td><td>${s.simulatedMinutes}</td><td>${s.shown}</td><td>${s.evaluations}</td><td>${s.latencyP50} / ${s.latencyP95}</td><td>${s.invalid + s.noRef + s.errors}</td></tr>`;
+      } catch {
+        return '';
+      }
+    });
+    reply.header('cache-control', 'no-store').type('text/html').send(`<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex"><title>Coach replays</title>
+<style>body{font:15px/1.5 -apple-system,sans-serif;background:#0f1419;color:#e8edf2;margin:24px}a{color:#f0a04b}table{border-collapse:collapse}td,th{border-bottom:1px solid #26323d;padding:6px 10px;text-align:left}th{color:#8b9aa8;font-weight:600}</style>
+<h1>Replay benchmark</h1><p>Each past call played through the coach. Open one to label its cues.</p>
+<table><tr><th>Call</th><th>Model</th><th>Type</th><th>Playbook</th><th>Mins</th><th>Cues shown</th><th>Checks</th><th>Latency p50/p95 ms</th><th>Dropped</th></tr>${rows.join('')}</table>`);
+  });
+  app.get('/replays/:file', { preHandler: guard }, async (req, reply) => {
+    const f = path.basename((req.params as { file: string }).file);
+    const full = path.join(replayDir(), f);
+    if (!f.endsWith('.json') || !fs.existsSync(full)) return reply.code(404).send('Not found');
+    const md: string = JSON.parse(fs.readFileSync(full, 'utf8')).markdown ?? '';
+    reply.header('cache-control', 'no-store').type('text/html').send(`<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex"><title>Replay</title>
+<style>body{font:15px/1.55 -apple-system,sans-serif;background:#0f1419;color:#e8edf2;margin:24px;max-width:900px}pre{white-space:pre-wrap;font:inherit}a{color:#f0a04b}</style>
+<p><a href="/replays">All replays</a></p><pre>${escapeHtml(md)}</pre>`);
+  });
+
+  // ---- Benchmark on boot: REPLAY_CALLS="id,id" and REPLAY_MODELS="model,model". Runs once per set. ----
+  const calls = (process.env.REPLAY_CALLS ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  const replayModels = (process.env.REPLAY_MODELS ?? cfg.cueModel).split(',').map((x) => x.trim()).filter(Boolean);
+  if (calls.length && cfg.databaseUrl && cfg.anthropicKey) {
+    const marker = path.join(replayDir(), `.done-${crypto.createHash('sha256').update(calls.join(',') + '|' + replayModels.join(',')).digest('hex').slice(0, 12)}`);
+    if (!fs.existsSync(marker)) {
+      void (async () => {
+        fs.mkdirSync(replayDir(), { recursive: true });
+        await new Promise((r) => setTimeout(r, 20_000)); // let the boot DB check settle first
+        for (const callId of calls) {
+          for (const modelId of replayModels) {
+            try {
+              const input = await loadReplayInput(callId, cfg.databaseUrl);
+              const result = await runReplay(input, { cueModel: new AnthropicModel(cfg.anthropicKey, modelId), stateModel: models.state, hostName: cfg.hostName, rate: cfg.cueRate });
+              const file = path.join(replayDir(), `${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}_${callId.slice(0, 8)}_${modelId}.json`);
+              fs.writeFileSync(file, JSON.stringify(result, null, 2));
+              const sm = result.summary;
+              console.log(JSON.stringify({ msg: `REPLAY DONE ${callId.slice(0, 8)} ${modelId}: ${sm.shown} cues from ${sm.evaluations} checks, p50 ${sm.latencyP50}ms p95 ${sm.latencyP95}ms, dropped ${sm.invalid + sm.noRef + sm.errors}, type ${sm.callType}, playbook ${sm.playbook ? 'yes' : 'no'}` }));
+            } catch (err) {
+              console.log(JSON.stringify({ msg: `REPLAY FAILED ${callId.slice(0, 8)} ${modelId}: ${String(err).slice(0, 160)}` }));
+            }
+          }
+        }
+        fs.writeFileSync(marker, new Date().toISOString());
+        console.log(JSON.stringify({ msg: 'REPLAY BATCH COMPLETE' }));
+      })();
+    }
+  }
 
   return Object.assign(app, { hub });
 }

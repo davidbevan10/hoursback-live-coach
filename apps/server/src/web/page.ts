@@ -153,6 +153,18 @@ function connect() {
   es.addEventListener('ended', () => { $('dot').className = 'dot'; });
   es.onerror = () => { $('dot').className = 'dot'; };
 }
+// A link like /?call=<booking id> (from the HoursBack admin) picks the booking before the call starts.
+(() => {
+  const id = new URLSearchParams(location.search).get('call');
+  if (!id) return;
+  post('/api/preselect', { callId: id }).then(() => {
+    const note = document.createElement('div');
+    note.className = 'warnline';
+    note.textContent = 'Booking picked from your link. The coach will use it when the call starts.';
+    document.getElementById('warnings').appendChild(note);
+  });
+  history.replaceState(null, '', '/');
+})();
 connect();
 </script>
 </body>
