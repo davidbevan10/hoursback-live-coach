@@ -51,6 +51,16 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
       const u = new URL(cfg.databaseUrl);
       const pw = decodeURIComponent(u.password);
       console.log(JSON.stringify({ msg: `PLAYBOOK DB URL: user=${decodeURIComponent(u.username)} host=${u.hostname} pwLength=${pw.length} pwSha256=${crypto.createHash('sha256').update(pw).digest('hex').slice(0, 8)}` }));
+      // Optional one-off check: SCRAM_CHECK="<iterations>:<salt>:<storedKey>" copied from the role's
+      // SCRAM verifier. Says whether Supabase holds the same password as this URL, without revealing either.
+      const check = process.env.SCRAM_CHECK;
+      if (check) {
+        const [iter, salt, stored] = check.split(':');
+        const salted = crypto.pbkdf2Sync(pw, Buffer.from(salt, 'base64'), Number(iter), 32, 'sha256');
+        const clientKey = crypto.createHmac('sha256', salted).update('Client Key').digest();
+        const storedKey = crypto.createHash('sha256').update(clientKey).digest('base64');
+        console.log(JSON.stringify({ msg: `PLAYBOOK DB SCRAM CHECK: ${storedKey === stored ? 'MATCH - Supabase has this password' : 'NO MATCH - Supabase has a different password'}` }));
+      }
     } catch (err) {
       console.log(JSON.stringify({ msg: `PLAYBOOK DB URL unparseable: ${String(err).slice(0, 80)}` }));
     }
