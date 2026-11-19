@@ -45,8 +45,17 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
   // shared pooler caches credentials briefly after a password change and only refreshes them on a
   // reconnect attempt, so retry a few times before calling it a failure.
   if (playbooks && 'recent' in playbooks) {
+    // A fingerprint of the password Railway holds (first 8 hex of its SHA-256 and its length),
+    // so it can be compared with the one set in Supabase without either ever being shown.
+    try {
+      const u = new URL(cfg.databaseUrl);
+      const pw = decodeURIComponent(u.password);
+      console.log(JSON.stringify({ msg: `PLAYBOOK DB URL: user=${decodeURIComponent(u.username)} host=${u.hostname} pwLength=${pw.length} pwSha256=${crypto.createHash('sha256').update(pw).digest('hex').slice(0, 8)}` }));
+    } catch (err) {
+      console.log(JSON.stringify({ msg: `PLAYBOOK DB URL unparseable: ${String(err).slice(0, 80)}` }));
+    }
     void (async () => {
-      for (let attempt = 1; attempt <= 4; attempt++) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           const route = await (playbooks as SupabasePlaybookSource).connectCheck();
           console.log(JSON.stringify({ msg: `PLAYBOOK DB OK via ${route} (attempt ${attempt})` }));
