@@ -15,13 +15,37 @@ export class SupabasePlaybookSource implements PlaybookSource {
   private pool: pg.Pool;
 
   constructor(
-    databaseUrl: string,
+    private databaseUrl: string,
     private windowBeforeMin: number,
     private windowAfterMin: number,
   ) {
-    this.pool = new pg.Pool({ connectionString: databaseUrl, max: 3, ssl: { rejectUnauthorized: false } });
-    // Without a listener, a dropped idle connection is an uncaught error that kills the process mid-call.
-    this.pool.on('error', (err) => console.error('playbook db pool error', err.message));
+    this.pool = makePool(databaseUrl);
+  }
+
+  /**
+   * Try the configured URL, then the direct database host if the URL is Supabase's shared
+   * pooler. Keeps whichever logs in. Returns which route worked, or throws both errors.
+   * (The direct host is IPv6-only, which Railway reaches once IPv6 egress is on.)
+   */
+  async connectCheck(): Promise<'pooler' | 'direct' | 'configured'> {
+    try {
+      await this.pool.query('select 1');
+      return isSharedPooler(this.databaseUrl) ? 'pooler' : 'configured';
+    } catch (first) {
+      const direct = directVariant(this.databaseUrl);
+      if (!direct) throw first;
+      const pool = makePool(direct);
+      try {
+        await pool.query('select 1');
+      } catch (second) {
+        await pool.end().catch(() => {});
+        throw new Error(`pooler: ${String(first).slice(0, 90)} | direct: ${String(second).slice(0, 90)}`);
+      }
+      const old = this.pool;
+      this.pool = pool;
+      void old.end().catch(() => {});
+      return 'direct';
+    }
   }
 
   async candidatesNear(at: Date): Promise<CallCandidate[]> {
@@ -122,4 +146,36 @@ export function buildBundle(m: RawCallMaterial): PlaybookBundle {
   if (sector) warnings.push(`Using the nearest sector playbook: ${sector}.`);
 
   return { callId: m.callId, label: m.label, callType, prospectPlaybook, prospectContext, sector, warnings };
+}
+
+function makePool(url: string) {
+  const pool = new pg.Pool({ connectionString: url, max: 3, ssl: { rejectUnauthorized: false } });
+  // Without a listener, a dropped idle connection is an uncaught error that kills the process mid-call.
+  pool.on('error', (err) => console.error('playbook db pool error', err.message));
+  return pool;
+}
+
+function isSharedPooler(url: string) {
+  try {
+    return new URL(url).hostname.endsWith('pooler.supabase.com');
+  } catch {
+    return false;
+  }
+}
+
+/** postgresql://role.<ref>:pw@aws-x-<region>.pooler.supabase.com:5432/postgres -> postgresql://role:pw@db.<ref>.supabase.co:5432/postgres */
+export function directVariant(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (!u.hostname.endsWith('pooler.supabase.com')) return null;
+    const user = decodeURIComponent(u.username);
+    const dot = user.lastIndexOf('.');
+    if (dot < 1) return null;
+    u.username = encodeURIComponent(user.slice(0, dot));
+    u.hostname = `db.${user.slice(dot + 1)}.supabase.co`;
+    u.port = '5432';
+    return u.toString();
+  } catch {
+    return null;
+  }
 }

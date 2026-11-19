@@ -46,13 +46,13 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
   // reconnect attempt, so retry a few times before calling it a failure.
   if (playbooks && 'recent' in playbooks) {
     void (async () => {
-      for (let attempt = 1; attempt <= 8; attempt++) {
+      for (let attempt = 1; attempt <= 4; attempt++) {
         try {
-          await (playbooks as SupabasePlaybookSource).recent(1);
-          console.log(JSON.stringify({ msg: `PLAYBOOK DB OK (attempt ${attempt})` }));
+          const route = await (playbooks as SupabasePlaybookSource).connectCheck();
+          console.log(JSON.stringify({ msg: `PLAYBOOK DB OK via ${route} (attempt ${attempt})` }));
           return;
         } catch (err) {
-          console.log(JSON.stringify({ msg: `PLAYBOOK DB FAILED (attempt ${attempt}): ${String(err).slice(0, 160)}` }));
+          console.log(JSON.stringify({ msg: `PLAYBOOK DB FAILED (attempt ${attempt}): ${String(err).slice(0, 220)}` }));
           await new Promise((r) => setTimeout(r, 15_000));
         }
       }
