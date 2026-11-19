@@ -41,12 +41,22 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
         : null;
   const hub = new Hub(cfg, models, playbooks);
 
-  // Check the playbook database once at boot, so a bad password shows in the logs straight away.
+  // Check the playbook database at boot so a bad login shows in the logs straight away. Supabase's
+  // shared pooler caches credentials briefly after a password change and only refreshes them on a
+  // reconnect attempt, so retry a few times before calling it a failure.
   if (playbooks && 'recent' in playbooks) {
-    (playbooks as SupabasePlaybookSource)
-      .recent(1)
-      .then(() => console.log(JSON.stringify({ msg: 'PLAYBOOK DB OK' })))
-      .catch((err) => console.log(JSON.stringify({ msg: `PLAYBOOK DB FAILED: ${String(err).slice(0, 160)}` })));
+    void (async () => {
+      for (let attempt = 1; attempt <= 8; attempt++) {
+        try {
+          await (playbooks as SupabasePlaybookSource).recent(1);
+          console.log(JSON.stringify({ msg: `PLAYBOOK DB OK (attempt ${attempt})` }));
+          return;
+        } catch (err) {
+          console.log(JSON.stringify({ msg: `PLAYBOOK DB FAILED (attempt ${attempt}): ${String(err).slice(0, 160)}` }));
+          await new Promise((r) => setTimeout(r, 15_000));
+        }
+      }
+    })();
   }
 
   // Never log query strings: the coach page is opened with ?key=<token>.
