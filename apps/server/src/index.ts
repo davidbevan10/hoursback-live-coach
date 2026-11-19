@@ -90,6 +90,8 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
       source.start(payload, (e) => {
         hub.handle(streamId, e);
         if (e.kind === 'leave') streams.delete(streamId); // lets a Zoom retry start it again
+        // Proof that transcript is flowing, without logging what was said.
+        if (e.kind === 'transcript') console.log(JSON.stringify({ msg: 'TRANSCRIPT IN', streamId, chars: e.text.length, speakerKnown: e.speaker !== 'unknown' }));
         if (e.kind !== 'transcript') app.log.info({ streamId, ...e }, 'RTMS EVENT');
       });
     } else if (STOP.includes(event) && streamId) {

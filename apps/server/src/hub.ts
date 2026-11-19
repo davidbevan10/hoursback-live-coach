@@ -88,7 +88,15 @@ export class Hub {
     const live = this.sessions.get(streamId);
     if (!live) return;
     live.log.write(e);
-    if (e.kind === 'transcript') live.session.addUtterance(e.speaker, e.text);
+    if (e.kind === 'transcript') {
+      // Zoom sometimes opens two streams for one meeting. The page follows whichever one is
+      // actually carrying the transcript.
+      if (this.currentId !== streamId) {
+        this.currentId = streamId;
+        this.broadcast('snapshot', this.snapshot());
+      }
+      live.session.addUtterance(e.speaker, e.text);
+    }
     if (e.kind === 'active_speaker') live.session.noteActiveSpeaker(e.speaker);
     if (e.kind === 'session_stop' || e.kind === 'leave') this.end(streamId);
   }
