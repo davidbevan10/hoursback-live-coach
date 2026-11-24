@@ -72,8 +72,8 @@ export const COACH_PAGE = /* html */ `<!doctype html>
       <label for="booking">Booking</label><select id="booking"></select>
       <label for="calltype">Call type</label>
       <select id="calltype"><option value="sme_discovery">SME discovery (15 min)</option><option value="enterprise_intro">Enterprise intro (20 min)</option><option value="other">Other (prospect playbook only)</option></select>
-      <label for="stage">Stage</label>
-      <select id="stage"><option value="first">First call (explore, don't push)</option><option value="follow_up">Follow-up (ask directly)</option></select>
+      <label for="callstage">Stage</label>
+      <select id="callstage"><option value="first">First call (explore, don't push)</option><option value="follow_up">Follow-up (ask directly)</option></select>
       <label>Cue rate</label><div class="seg" id="rate"><button data-r="conservative">Fewer</button><button data-r="balanced">Balanced</button><button data-r="proactive">More</button></div>
       <div id="warnings"></div>
     </section>
@@ -113,7 +113,7 @@ function render() {
     $('who').textContent = b.label;
     $('playbook').textContent = b.playbookTitle ? 'Playbook: ' + b.playbookTitle : 'No prospect playbook';
     $('calltype').value = b.callType;
-    if (b.stage) $('stage').value = b.stage;
+    if (b.stage) $('callstage').value = b.stage;
     $('warnings').innerHTML = (b.warnings || []).map((w) => '<div class="warnline">' + esc(w) + '</div>').join('');
   }
 }
@@ -124,18 +124,30 @@ async function loadBookings() {
   const recent = await r.json();
   const seen = new Set();
   const all = [...(S.candidates || []), ...recent].filter((c) => !seen.has(c.id) && seen.add(c.id));
-  const cur = S.bundle && S.bundle.callId;
+  const cur = S.prep ? S.prep.callId : (S.bundle && S.bundle.callId);
   $('booking').innerHTML = '<option value="">None (generic framework)</option>' + all.map((c) =>
     '<option value="' + c.id + '"' + (c.id === cur ? ' selected' : '') + '>' + esc(c.label) + (c.scheduledAt ? ' - ' + new Date(c.scheduledAt).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') + (c.hasPlaybook ? '' : ' (no playbook)') + '</option>').join('');
+  if (!S.bundle || S.prep) showPrep();
+}
+
+/** Before a call: show what the next call is set up with. */
+function showPrep() {
+  const p = S.prep || {};
+  if (p.callType) $('calltype').value = p.callType;
+  if (p.stage) $('callstage').value = p.stage;
+  const opt = $('booking').selectedOptions[0];
+  const picked = p.callId ? (opt && opt.value === p.callId ? opt.textContent : 'booking picked') : null;
+  $('who').textContent = picked ? 'Ready for next call: ' + picked : 'Waiting for a Zoom call';
+  $('playbook').textContent = picked ? '' : 'Pick the booking below, or the coach will choose the one nearest the call time';
 }
 
 function setRate(r) { document.querySelectorAll('#rate button').forEach((b) => b.classList.toggle('on', b.dataset.r === r)); }
 
 const post = (url, body) => fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 window.feedback = (id, label) => { S.feedback[id] = label; render(); post('/api/feedback', { cueId: id, label }); };
-$('booking').onchange = (e) => post('/api/call', { callId: e.target.value || null });
+$('booking').onchange = (e) => post('/api/call', { callId: e.target.value || null }).then(() => loadBookings());
 $('calltype').onchange = (e) => post('/api/call', { callType: e.target.value });
-$('stage').onchange = (e) => post('/api/call', { stage: e.target.value });
+$('callstage').onchange = (e) => post('/api/call', { stage: e.target.value });
 document.querySelectorAll('#rate button').forEach((b) => (b.onclick = () => { setRate(b.dataset.r); post('/api/settings', { cueRate: b.dataset.r }); }));
 
 function connect() {
@@ -144,11 +156,18 @@ function connect() {
     const d = JSON.parse(m.data);
     setRate(d.cueRate);
     const s = d.session;
-    if (!s) { $('dot').className = 'dot'; return; }
+    S.prep = d.prep || null;
+    if (!s || s.ended) {
+      $('dot').className = 'dot';
+      if (!s) S = { cues: [], turns: [], feedback: {}, state: null, bundle: null, candidates: [], prep: S.prep };
+      showPrep();
+      if (!s) return;
+    }
     $('dot').className = 'dot' + (s.ended ? '' : ' live');
     $('model').textContent = 'Model: ' + s.cueModel;
-    S = { cues: s.cues, turns: s.turns, feedback: s.feedback, state: s.state, bundle: s.bundle, candidates: s.candidates };
+    S = { cues: s.cues, turns: s.turns, feedback: s.feedback, state: s.state, bundle: s.bundle, candidates: s.candidates, prep: s.ended ? S.prep : null };
     render(); loadBookings();
+    if (s.ended) showPrep();
   });
   es.addEventListener('turn', (m) => { S.turns.push(JSON.parse(m.data).turn); render(); });
   es.addEventListener('cue', (m) => { S.cues.push(JSON.parse(m.data).cue); render(); });
@@ -169,6 +188,7 @@ function connect() {
   });
   history.replaceState(null, '', '/');
 })();
+loadBookings().then(() => { if (!S.bundle) showPrep(); });
 connect();
 </script>
 </body>

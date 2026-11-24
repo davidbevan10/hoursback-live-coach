@@ -38,11 +38,34 @@ export class Hub {
   private sessions = new Map<string, Live>();
   private listeners = new Set<Listener>();
   private currentId: string | null = null;
-  /** A booking chosen on the page before the call starts (e.g. from a link with ?call=<id>). Used by the next session within 3 hours. */
-  private preselect: { callId: string; at: number } | null = null;
+  /**
+   * Choices made on the page before the call starts: booking (null = none), call type, stage.
+   * Used by the next session that starts within 3 hours.
+   */
+  private prep: { callId?: string | null; callType?: CallType; stage?: CallStage; at: number } | null = null;
 
   preselectCall(callId: string) {
-    this.preselect = { callId, at: Date.now() };
+    this.setPrep({ callId });
+  }
+
+  setPrep(p: { callId?: string | null; callType?: CallType; stage?: CallStage }) {
+    this.prep = { ...(this.prep ?? {}), ...p, at: Date.now() };
+    if (p.callId !== undefined && this.prep) {
+      // A new booking resets the type and stage to that booking's own guess unless set again.
+      if (p.callType === undefined) delete this.prep.callType;
+      if (p.stage === undefined) delete this.prep.stage;
+    }
+    this.broadcast('snapshot', this.snapshot());
+  }
+
+  /** True when a call is live right now (an ended call stays on screen but takes no changes). */
+  hasLiveCall() {
+    const s = this.current();
+    return !!s && !s.ended;
+  }
+
+  private freshPrep() {
+    return this.prep && Date.now() - this.prep.at < 3 * 60 * 60_000 ? this.prep : null;
   }
 
   constructor(
@@ -71,7 +94,9 @@ export class Hub {
 
   snapshot() {
     const s = this.current();
-    if (!s) return { session: null, cueRate: this.cfg.cueRate };
+    const prep = this.freshPrep();
+    const prepOut = prep ? { callId: prep.callId, callType: prep.callType, stage: prep.stage } : null;
+    if (!s) return { session: null, cueRate: this.cfg.cueRate, prep: prepOut };
     return {
       session: {
         streamId: s.streamId,
@@ -86,6 +111,7 @@ export class Hub {
         cueModel: this.models.cue.id,
       },
       cueRate: s.session.cueRate,
+      prep: s.ended ? prepOut : null,
     };
   }
 
@@ -145,10 +171,12 @@ export class Hub {
       let loaded: PlaybookBundle;
       try {
         live.candidates = await this.playbooks.candidatesNear(new Date(startedAt));
-        const pre = this.preselect && Date.now() - this.preselect.at < 3 * 60 * 60_000 ? this.preselect.callId : null;
-        this.preselect = null;
-        const chosen = pre ?? live.candidates[0]?.id;
+        const prep = this.freshPrep();
+        this.prep = null;
+        const chosen = prep && prep.callId !== undefined ? prep.callId : live.candidates[0]?.id;
         loaded = chosen ? await this.playbooks.load(chosen) : EMPTY_BUNDLE();
+        if (prep?.callType) loaded = { ...loaded, callType: prep.callType };
+        if (prep?.stage) loaded = { ...loaded, stage: prep.stage };
       } catch (err) {
         loaded = { ...EMPTY_BUNDLE(), warnings: [`Could not load playbooks: ${String(err).slice(0, 140)}`] };
       }

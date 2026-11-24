@@ -187,16 +187,21 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
   app.post('/api/preselect', { preHandler: guard }, async (req) => {
     const { json } = req.body as { json: { callId: string } };
     if (!/^[0-9a-f-]{36}$/i.test(json?.callId ?? '')) return { ok: false };
-    hub.preselectCall(json.callId);
-    // If a call is already live, switch it now too.
-    if (hub.current()) await hub.pickCall(json.callId);
+    if (hub.hasLiveCall()) await hub.pickCall(json.callId);
+    else hub.preselectCall(json.callId);
     return { ok: true };
   });
 
+  // Booking, call type and stage. During a call they change it straight away; before a call they
+  // are kept for the next one, so the coach can be set up with Zoom closed.
   app.post('/api/call', { preHandler: guard }, async (req) => {
     const { json } = req.body as { json: { callId?: string | null; callType?: CallType; stage?: CallStage } };
     const stage = json.stage === 'first' || json.stage === 'follow_up' ? json.stage : undefined;
-    return { ok: await hub.pickCall('callId' in json ? (json.callId ?? null) : undefined, json.callType, stage) };
+    const callType = json.callType && ['sme_discovery', 'enterprise_intro', 'other'].includes(json.callType) ? json.callType : undefined;
+    const callId = 'callId' in json ? (json.callId && /^[0-9a-f-]{36}$/i.test(json.callId) ? json.callId : null) : undefined;
+    if (hub.hasLiveCall()) return { ok: await hub.pickCall(callId, callType, stage), mode: 'live' };
+    hub.setPrep({ ...(callId !== undefined ? { callId } : {}), ...(callType ? { callType } : {}), ...(stage ? { stage } : {}) });
+    return { ok: true, mode: 'next_call' };
   });
 
   // ---- Replay benchmark: runs a past call through the engine with the server's own keys. ----

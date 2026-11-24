@@ -86,9 +86,9 @@ export class SupabasePlaybookSource implements PlaybookSource {
     return rows.map((r) => ({ id: r.id, label: r.label, scheduledAt: r.scheduled_at?.toISOString?.() ?? null, hasPlaybook: r.has_playbook }));
   }
 
-  /** Recent bookings, for the manual picker on the coach page. */
+  /** Bookings for the manual picker on the coach page: last 14 days and upcoming, nearest to now first. */
   async recent(limit = 15): Promise<CallCandidate[]> {
-    const rows = await this.bookings(`p.scheduled_at > now() - interval '14 days'`, `p.scheduled_at desc limit $1`, [limit]);
+    const rows = await this.bookings(`p.scheduled_at > now() - interval '14 days'`, `abs(extract(epoch from (p.scheduled_at - now()))) limit $1`, [limit]);
     return rows.map((r) => ({ id: r.id, label: r.label, scheduledAt: r.scheduled_at?.toISOString?.() ?? null, hasPlaybook: r.has_playbook }));
   }
 
