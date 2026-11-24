@@ -33,7 +33,7 @@ export type SessionEvent =
   | { kind: 'turn'; turn: Turn }
   | { kind: 'cue'; cue: ShownCue }
   | { kind: 'state'; state: CallState }
-  | { kind: 'eval'; at: number; outcome: 'none' | 'below_threshold' | 'invalid' | 'no_ref' | 'shown' | 'error'; detail?: string; latencyMs?: number; triggeredBy: Trigger }
+  | { kind: 'eval'; at: number; outcome: 'none' | 'below_threshold' | 'invalid' | 'no_ref' | 'duplicate' | 'shown' | 'error'; detail?: string; latencyMs?: number; triggeredBy: Trigger }
   | { kind: 'bundle'; bundle: Pick<PlaybookBundle, 'callId' | 'label' | 'callType' | 'sector' | 'warnings'> & { playbookTitle: string | null } };
 
 /** Words that justify evaluating early, inside the cooldown (brief, section 5). */
@@ -173,7 +173,7 @@ export class CoachSession {
     try {
       const res = await this.deps.cueModel.complete({
         ...this.blocks,
-        user: cueUserMessage({ turns: this.window(), state: this.state, recentCues: this.cues.slice(-3), elapsedMin: (at - this.startedAt) / 60_000, trigger: TRIGGER_TEXT[triggeredBy] }),
+        user: cueUserMessage({ turns: this.window(), state: this.state, recentCues: this.cues.slice(-15), elapsedMin: (at - this.startedAt) / 60_000, trigger: TRIGGER_TEXT[triggeredBy] }),
         maxTokens: 300,
       });
       const parsed = CueSchema.safeParse(extractJson(res.text));
@@ -192,6 +192,11 @@ export class CoachSession {
       }
       if (!refExists(cue.playbook_ref, this.headings, this.groundingNorm)) {
         this.deps.onEvent({ kind: 'eval', at, outcome: 'no_ref', detail: cue.playbook_ref, latencyMs: res.latencyMs, triggeredBy });
+        return;
+      }
+      const dup = this.cues.find((c) => isRepeat(c, cue, this.now()));
+      if (dup) {
+        this.deps.onEvent({ kind: 'eval', at, outcome: 'duplicate', detail: `${cue.headline} ~ ${dup.headline}`, latencyMs: res.latencyMs, triggeredBy });
         return;
       }
       const shown: ShownCue = {
@@ -232,6 +237,26 @@ export class CoachSession {
 
 export function summary(b: PlaybookBundle) {
   return { callId: b.callId, label: b.label, callType: b.callType, sector: b.sector, warnings: b.warnings, playbookTitle: b.prospectPlaybook?.title ?? null };
+}
+
+const STOP = new Set('a an and are as at be but by do for from has have how i if in is it its me my of on or our so that the their them they this to was we what when where which who why will with you your'.split(' '));
+
+function contentWords(s: string) {
+  return new Set(norm(s).split(' ').filter((w) => w.length > 2 && !STOP.has(w)));
+}
+
+/**
+ * A cue repeats an earlier one if it cites the same playbook section within 10 minutes, or if
+ * its line to say shares most of its meaningful words with any earlier line. The live call on
+ * 24 Nov showed the model rewording the same point several times.
+ */
+export function isRepeat(prev: Cue & { at: number }, next: Cue, now: number): boolean {
+  if (norm(prev.playbook_ref) === norm(next.playbook_ref) && now - prev.at < 10 * 60_000) return true;
+  const a = contentWords(prev.say_this + ' ' + prev.headline);
+  const b = contentWords(next.say_this + ' ' + next.headline);
+  if (!a.size || !b.size) return false;
+  const shared = [...b].filter((w) => a.has(w)).length;
+  return shared / Math.min(a.size, b.size) >= 0.6;
 }
 
 function norm(s: string) {

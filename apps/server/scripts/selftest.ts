@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { buildBundle } from '../src/playbooks/supabase.js';
 import { headingsOf } from '../src/playbooks/html.js';
-import { CoachSession, refExists, type SessionEvent } from '../src/engine/session.js';
+import { CoachSession, isRepeat, refExists, type SessionEvent } from '../src/engine/session.js';
 import { systemBlocks } from '../src/engine/prompt.js';
 import type { CueModel, ModelCall } from '../src/engine/model.js';
 
@@ -117,6 +117,15 @@ await check('the prospect playbook outranks the framework in the prompt', () => 
   const g = systemBlocks(b, 'David Bevan').grounding;
   assert.match(g, /PROSPECT PLAYBOOK \(Layer 2\).*this wins/);
   assert.equal(b.sector, null);
+});
+
+await check('repeats are caught: same section within 10 min, or the same point reworded', () => {
+  const base = { type: 'probe' as const, why: 'x', confidence: 0.8 };
+  const prev = { ...base, headline: 'Pin the hours down', say_this: 'Roughly how many hours a week does that take your team?', playbook_ref: 'Q4. The number', at: 0 };
+  assert.ok(isRepeat(prev, { ...base, headline: 'Get the number', say_this: 'Something else entirely', playbook_ref: 'Q4. The number' }, 5 * 60_000));
+  assert.ok(!isRepeat(prev, { ...base, headline: 'Get the number', say_this: 'Something else entirely', playbook_ref: 'Q4. The number' }, 15 * 60_000));
+  assert.ok(isRepeat(prev, { ...base, headline: 'Hours each week', say_this: 'How many hours a week does your team spend on that?', playbook_ref: 'Pitfall: letting a vague answer pass' }, 20 * 60_000));
+  assert.ok(!isRepeat(prev, { ...base, headline: 'Ask who signs', say_this: 'Who approves spend like this, and should they join the next call?', playbook_ref: 'Q4. Who signs' }, 1000));
 });
 
 console.log(failures ? `\n${failures} failed` : '\nall passed');

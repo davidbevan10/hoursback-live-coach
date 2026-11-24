@@ -281,7 +281,7 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
               const file = path.join(replayDir(), `${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}_${callId.slice(0, 8)}_${modelId}.json`);
               fs.writeFileSync(file, JSON.stringify(result, null, 2));
               const sm = result.summary;
-              console.log(JSON.stringify({ msg: `REPLAY DONE ${callId.slice(0, 8)} ${modelId}: ${sm.shown} cues from ${sm.evaluations} checks, p50 ${sm.latencyP50}ms p95 ${sm.latencyP95}ms, dropped ${sm.invalid + sm.noRef + sm.errors}, type ${sm.callType}, playbook ${sm.playbook ? 'yes' : 'no'}; top drops: ${JSON.stringify(sm.dropReasons)}` }));
+              console.log(JSON.stringify({ msg: `REPLAY DONE ${callId.slice(0, 8)} ${modelId}: ${sm.shown} cues from ${sm.evaluations} checks, p50 ${sm.latencyP50}ms p95 ${sm.latencyP95}ms, dropped ${sm.invalid + sm.noRef + sm.errors}, repeats blocked ${sm.duplicates}, type ${sm.callType}, playbook ${sm.playbook ? 'yes' : 'no'}; top drops: ${JSON.stringify(sm.dropReasons)}` }));
             } catch (err) {
               console.log(JSON.stringify({ msg: `REPLAY FAILED ${callId.slice(0, 8)} ${modelId}: ${String(err).slice(0, 160)}` }));
             }

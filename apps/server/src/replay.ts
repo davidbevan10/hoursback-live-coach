@@ -92,6 +92,7 @@ export async function runReplay(input: ReplayInput, opts: { cueModel: CueModel; 
     belowThreshold: count('below_threshold'),
     invalid: count('invalid'),
     noRef: count('no_ref'),
+    duplicates: count('duplicate'),
     errors: count('error'),
     dropReasons: Object.entries(
       evals

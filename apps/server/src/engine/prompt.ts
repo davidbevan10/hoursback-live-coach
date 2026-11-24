@@ -49,14 +49,14 @@ export function cueUserMessage(opts: { turns: Turn[]; state: CallState | null; r
   const state = opts.state
     ? `Stage: ${opts.state.stage}\nCovered: ${opts.state.covered.join('; ') || 'nothing yet'}\nMissing: ${opts.state.missing.join('; ') || 'unknown'}\nTop gaps: ${opts.state.top_gaps.join('; ') || 'none'}`
     : 'Not assessed yet.';
-  const recent = opts.recentCues.length ? opts.recentCues.map((c) => `- [${c.type}] ${c.headline}: ${c.say_this}`).join('\n') : 'None.';
+  const recent = opts.recentCues.length ? opts.recentCues.map((c) => `- [${c.type}] ${c.headline}: ${c.say_this} (ref: ${c.playbook_ref})`).join('\n') : 'None.';
   return `Minutes into the call: ${opts.elapsedMin.toFixed(1)}
 Why you are being asked now: ${opts.trigger ?? 'the prospect just finished a turn'}
 
 Coverage state:
 ${state}
 
-Recent cues already shown (do not repeat):
+Every cue already shown on this call (never repeat one, reword one, or make the same point from another angle; if the same gap is still open, David has seen it, so return none):
 ${recent}
 
 Last ~90 seconds of transcript (most recent last):
