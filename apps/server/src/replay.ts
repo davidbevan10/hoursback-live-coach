@@ -16,7 +16,7 @@ export async function loadReplayInput(callId: string, databaseUrl: string): Prom
   try {
     const c = (await pool.query(`select id, business, display_name, transcript from prospect_calls where id = $1`, [callId])).rows[0];
     if (!c?.transcript) throw new Error('No transcript on that call');
-    const pb = (await pool.query(`select title, content_html, created_at from prospect_documents where prospect_call_id=$1 and kind='playbook' and content_html is not null order by created_at desc limit 1`, [callId])).rows[0];
+    const pb = (await pool.query(`select title, content_html, created_at from prospect_documents where prospect_call_id=$1 and (kind = 'playbook' or (kind in ('analysis', 'other') and title ilike '%playbook%')) and content_html is not null order by created_at desc limit 1`, [callId])).rows[0];
     const rs = (await pool.query(`select title, content_html from prospect_documents where prospect_call_id=$1 and kind='research' and content_html is not null order by created_at desc limit 1`, [callId])).rows[0];
     return {
       callId,

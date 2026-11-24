@@ -5,7 +5,8 @@ import { guessCallType, guessSector, type CallCandidate, type PlaybookBundle, ty
 /**
  * Reads playbooks from the HoursBack Supabase project, read-only.
  *
- * Source of truth decision (18 Nov 2026): `prospect_documents` (kind = 'playbook') on the
+ * Source of truth decision (18 Nov 2026): `prospect_documents` (kind = 'playbook', or an analysis/other
+ * document whose title says playbook, since some get stored that way) on the
  * prospect's `prospect_calls` row. It is the only store that says WHICH call a playbook
  * belongs to, and the only one a hosted server can reach. The `tasks/` files on David's
  * Mac and in git have no link to a booking, so a playbook must be stored on the row
@@ -53,7 +54,7 @@ export class SupabasePlaybookSource implements PlaybookSource {
     // `after` minutes past it. Nearest slot first.
     const { rows } = await this.pool.query(
       `select p.id, p.scheduled_at, coalesce(p.display_name, left(p.business, 60), 'Unnamed booking') as label,
-              exists (select 1 from prospect_documents d where d.prospect_call_id = p.id and d.kind = 'playbook') as has_playbook
+              exists (select 1 from prospect_documents d where d.prospect_call_id = p.id and (d.kind = 'playbook' or (d.kind in ('analysis', 'other') and d.title ilike '%playbook%'))) as has_playbook
          from prospect_calls p
         where p.scheduled_at between $1::timestamptz - make_interval(mins => $3::int) and $1::timestamptz + make_interval(mins => $2::int)
         order by abs(extract(epoch from (p.scheduled_at - $1::timestamptz)))
@@ -67,7 +68,7 @@ export class SupabasePlaybookSource implements PlaybookSource {
   async recent(limit = 15): Promise<CallCandidate[]> {
     const { rows } = await this.pool.query(
       `select p.id, p.scheduled_at, coalesce(p.display_name, left(p.business, 60), 'Unnamed booking') as label,
-              exists (select 1 from prospect_documents d where d.prospect_call_id = p.id and d.kind = 'playbook') as has_playbook
+              exists (select 1 from prospect_documents d where d.prospect_call_id = p.id and (d.kind = 'playbook' or (d.kind in ('analysis', 'other') and d.title ilike '%playbook%'))) as has_playbook
          from prospect_calls p
         where p.scheduled_at > now() - interval '14 days'
         order by p.scheduled_at desc
@@ -90,7 +91,7 @@ export class SupabasePlaybookSource implements PlaybookSource {
     const pb = (
       await this.pool.query(
         `select title, content_html, created_at from prospect_documents
-          where prospect_call_id = $1 and kind = 'playbook' and content_html is not null
+          where prospect_call_id = $1 and (kind = 'playbook' or (kind in ('analysis', 'other') and title ilike '%playbook%')) and content_html is not null
           order by created_at desc limit 1`,
         [callId],
       )
