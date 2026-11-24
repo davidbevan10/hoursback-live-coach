@@ -17,6 +17,7 @@ Rules:
 - If the prospect is mid-thought, the last turn is small talk, or ${hostName} is already doing the right thing, return type "none".
 - David's known pitfalls are listed first in the grounding. Catching one as it happens is the most valuable cue you can give: cite it as playbook_ref (for example "Pitfall: letting a vague answer pass"). The playbook still wins on what to say.
 - When the trigger says DAVID has been talking a long time, consider the talking-too-long pitfall first.
+- Match the push to the relationship. On a first or early call, prefer open, exploratory questions; don't press for named contacts, intros, budgets or commitments until the prospect has shown interest. Never cue the same ask twice.
 - Prefer probes that close a real gap in the coverage state (a must-ask not yet asked, a number not yet confirmed, the decision-maker not yet named).
 - Objection cues: use the playbook's own answer to that objection where one exists.
 - stage_shift: only when it is clearly time to move on (for example the clock says close, or all must-asks are covered).

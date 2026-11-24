@@ -16,7 +16,7 @@ Fix: pick one example and rebuild it. "Walk me through the last time that happen
 ## Pitfall: not qualifying the call early
 Running a full discovery or demo with someone who is not a buyer: a consultant or agency, a referral partner, someone outside the UK, someone with a locked-down internal programme, someone semi-retired or "just exploring".
 Watch for: signs in the first five minutes that this person cannot or will not buy.
-Fix: ask what they want from the call, then pivot. "Are you looking at this for your own business, or is there a referral or partnership angle?" If it is referral, mine names and intros, not discovery.
+Fix: ask what they want from the call, then pivot. "Are you looking at this for your own business, or is there a referral or partnership angle?" If it is referral, explore who they work with and what those people struggle with, rather than running discovery. Names come later (see "pushing too hard on a first call").
 
 ## Pitfall: not chasing the decision-maker
 "I'll speak to the MD", "I'd need to check with commercial", "there's a framework process", "I'll run it by my partner" - and David moves on.
@@ -56,4 +56,9 @@ Fix: "Shall we dive in? What's the biggest drain on the week right now?"
 ## Pitfall: referral signals not actioned
 A named contact, a firm, a network or an offer to introduce passes without a request. Or a call came via a referrer and David never checks what the referrer said.
 Watch for: names, firms, "I know someone who...", or a referred call that opens without a frame check.
-Fix: ask for the intro on the spot, or "What did [referrer] tell you about us?"
+Fix: note it and come back to it, or check the frame: "What did [referrer] tell you about us?" On a first or early call, an open question ("Is there anyone who comes to mind?") beats asking for a named intro; ask for the intro itself only once they've offered or shown real interest.
+
+## Pitfall: pushing too hard on a first call
+David's own feedback (24 Nov 2026): on an early-stage call the coach pushed hard for specific client names, intros and commitments, and that felt too much, so he held back. The debriefs' "ask for names on the spot" advice is right for a warm or second call, not a first one.
+Watch for: a first or early call where trust isn't built yet, a prospect who hasn't offered names or a next step themselves, or a call that is still exploring whether there's a fit at all.
+Fix: keep it exploratory. Ask about the kinds of businesses they see and what those people struggle with, not for named people. Ask for a specific intro or commitment at most once, late in the call, and only after they've shown interest. If they deflect, let it go.
