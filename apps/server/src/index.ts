@@ -6,7 +6,7 @@ import { loadConfig, CUE_RATES, type Config, type CueRate } from './config.js';
 import { AnthropicModel, StubModel, type CueModel } from './engine/model.js';
 import { Hub } from './hub.js';
 import { SupabasePlaybookSource } from './playbooks/supabase.js';
-import type { CallType, PlaybookSource } from './playbooks/source.js';
+import type { CallStage, CallType, PlaybookSource } from './playbooks/source.js';
 import { loadReplayInput, runReplay } from './replay.js';
 import { RtmsSource } from './sources/rtms.js';
 import type { TranscriptSource } from './sources/types.js';
@@ -194,8 +194,9 @@ export function buildApp(depsOrSource: AppDeps | TranscriptSource = {}) {
   });
 
   app.post('/api/call', { preHandler: guard }, async (req) => {
-    const { json } = req.body as { json: { callId?: string | null; callType?: CallType } };
-    return { ok: await hub.pickCall('callId' in json ? (json.callId ?? null) : undefined, json.callType) };
+    const { json } = req.body as { json: { callId?: string | null; callType?: CallType; stage?: CallStage } };
+    const stage = json.stage === 'first' || json.stage === 'follow_up' ? json.stage : undefined;
+    return { ok: await hub.pickCall('callId' in json ? (json.callId ?? null) : undefined, json.callType, stage) };
   });
 
   // ---- Replay benchmark: runs a past call through the engine with the server's own keys. ----

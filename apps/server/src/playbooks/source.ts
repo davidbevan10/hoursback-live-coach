@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 /** Which generic framework applies. Scoping, review and follow-up calls run on the prospect playbook only. */
 export type CallType = 'sme_discovery' | 'enterprise_intro' | 'other';
 
+/** First meeting with this person, or a later one. Decides how hard the coach may push. */
+export type CallStage = 'first' | 'follow_up';
+
 export type Sector = 'insurance-broker-groups' | 'insurance-london-market' | 'recruitment-contract' | 'recruitment-education-supply';
 
 /** A booked call the coach could be attached to (a prospect_calls row). */
@@ -20,6 +23,7 @@ export interface PlaybookBundle {
   callId: string | null;
   label: string;
   callType: CallType;
+  stage: CallStage;
   /** Layer 2: the prospect's own playbook as plain text, newest version. Null when none is stored. */
   prospectPlaybook: { title: string; text: string; createdAt: string } | null;
   /** Extra prospect context: business line, call notes (the pre-call context pack), latest research doc. */

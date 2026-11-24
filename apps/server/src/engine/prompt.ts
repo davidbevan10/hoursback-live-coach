@@ -30,6 +30,11 @@ Reply with ONLY a JSON object:
 For "none", leave the text fields empty and set confidence to 0.`;
 
   const sections: string[] = [];
+  sections.push(
+    bundle.stage === 'first'
+      ? `# CALL STAGE: FIRST CALL with this person. Build trust and explore. Do not press for named contacts, intros, budgets or commitments; ask for any one of these at most once, late, and only after they have shown interest.`
+      : `# CALL STAGE: FOLLOW-UP with someone David has spoken to before. Asking directly for names, intros, decisions and next steps is appropriate.`,
+  );
   sections.push(`# GENERIC FRAMEWORK (Layer 1, call type: ${bundle.callType})\n\n${layer1Text(bundle.callType, bundle.sector)}`);
   if (bundle.prospectPlaybook) {
     sections.push(`# PROSPECT PLAYBOOK (Layer 2) - "${bundle.prospectPlaybook.title}". Where it disagrees with the generic framework, this wins.\n\n${bundle.prospectPlaybook.text}`);

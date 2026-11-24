@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { playbookHtmlToText } from './html.js';
-import { guessCallType, guessSector, type CallCandidate, type PlaybookBundle, type PlaybookSource } from './source.js';
+import { guessCallType, guessSector, type CallCandidate, type CallStage, type PlaybookBundle, type PlaybookSource } from './source.js';
 
 /**
  * Reads playbooks from the HoursBack Supabase project, read-only.
@@ -12,8 +12,34 @@ import { guessCallType, guessSector, type CallCandidate, type PlaybookBundle, ty
  * Mac and in git have no link to a booking, so a playbook must be stored on the row
  * (store-prospect-doc skill) for the coach to see it.
  */
+const HAS_PLAYBOOK = `exists (select 1 from prospect_documents d where d.prospect_call_id = p.id and (d.kind = 'playbook' or (d.kind in ('analysis', 'other') and d.title ilike '%playbook%'))) as has_playbook`;
+
+/** The person's name and business from the CRM contact, falling back to what's on the booking. */
+const LABEL_WITH_CONTACT = `coalesce(nullif(concat_ws(' - ', c.name, c.business_name), ''), p.display_name, left(p.business, 60), 'Unnamed booking') as label`;
+const LABEL_BOOKING_ONLY = `coalesce(p.display_name, left(p.business, 60), 'Unnamed booking') as label`;
+
 export class SupabasePlaybookSource implements PlaybookSource {
   private pool: pg.Pool;
+  /** Flips to false if coach_reader can't read contacts yet (docs/sql/coach_reader_contacts.sql), so the picker still works. */
+  private contactsReadable = true;
+
+  /** Run a booking-list query with contact names, or without them if that table isn't granted. */
+  private async bookings(where: string, order: string, params: unknown[]) {
+    const sql = (withContacts: boolean) =>
+      `select p.id, p.scheduled_at, ${withContacts ? LABEL_WITH_CONTACT : LABEL_BOOKING_ONLY}, ${HAS_PLAYBOOK}
+         from prospect_calls p ${withContacts ? 'left join contacts c on c.id = p.contact_id' : ''}
+        where ${where} order by ${order}`;
+    if (this.contactsReadable) {
+      try {
+        return (await this.pool.query(sql(true), params)).rows;
+      } catch (err: any) {
+        if (err?.code !== '42501') throw err; // only "permission denied" falls back
+        this.contactsReadable = false;
+        console.log(JSON.stringify({ msg: 'PLAYBOOK DB: contacts not readable by coach_reader, showing booking names only' }));
+      }
+    }
+    return (await this.pool.query(sql(false), params)).rows;
+  }
 
   constructor(
     private databaseUrl: string,
@@ -52,13 +78,9 @@ export class SupabasePlaybookSource implements PlaybookSource {
   async candidatesNear(at: Date): Promise<CallCandidate[]> {
     // A booking counts if the call started between `before` minutes ahead of its slot and
     // `after` minutes past it. Nearest slot first.
-    const { rows } = await this.pool.query(
-      `select p.id, p.scheduled_at, coalesce(p.display_name, left(p.business, 60), 'Unnamed booking') as label,
-              exists (select 1 from prospect_documents d where d.prospect_call_id = p.id and (d.kind = 'playbook' or (d.kind in ('analysis', 'other') and d.title ilike '%playbook%'))) as has_playbook
-         from prospect_calls p
-        where p.scheduled_at between $1::timestamptz - make_interval(mins => $3::int) and $1::timestamptz + make_interval(mins => $2::int)
-        order by abs(extract(epoch from (p.scheduled_at - $1::timestamptz)))
-        limit 5`,
+    const rows = await this.bookings(
+      `p.scheduled_at between $1::timestamptz - make_interval(mins => $3::int) and $1::timestamptz + make_interval(mins => $2::int)`,
+      `abs(extract(epoch from (p.scheduled_at - $1::timestamptz))) limit 5`,
       [at.toISOString(), this.windowBeforeMin, this.windowAfterMin],
     );
     return rows.map((r) => ({ id: r.id, label: r.label, scheduledAt: r.scheduled_at?.toISOString?.() ?? null, hasPlaybook: r.has_playbook }));
@@ -66,22 +88,18 @@ export class SupabasePlaybookSource implements PlaybookSource {
 
   /** Recent bookings, for the manual picker on the coach page. */
   async recent(limit = 15): Promise<CallCandidate[]> {
-    const { rows } = await this.pool.query(
-      `select p.id, p.scheduled_at, coalesce(p.display_name, left(p.business, 60), 'Unnamed booking') as label,
-              exists (select 1 from prospect_documents d where d.prospect_call_id = p.id and (d.kind = 'playbook' or (d.kind in ('analysis', 'other') and d.title ilike '%playbook%'))) as has_playbook
-         from prospect_calls p
-        where p.scheduled_at > now() - interval '14 days'
-        order by p.scheduled_at desc
-        limit $1`,
-      [limit],
-    );
+    const rows = await this.bookings(`p.scheduled_at > now() - interval '14 days'`, `p.scheduled_at desc limit $1`, [limit]);
     return rows.map((r) => ({ id: r.id, label: r.label, scheduledAt: r.scheduled_at?.toISOString?.() ?? null, hasPlaybook: r.has_playbook }));
   }
 
   async load(callId: string): Promise<PlaybookBundle> {
     const call = (
       await this.pool.query(
-        `select id, business, display_name, call_notes, scheduled_at from prospect_calls where id = $1`,
+        `select p.id, p.business, p.display_name, p.call_notes, p.scheduled_at,
+                (select count(*) from prospect_calls q
+                  where q.contact_id = p.contact_id and q.id <> p.id and q.status = 'completed'
+                    and q.scheduled_at < coalesce(p.scheduled_at, now()))::int as earlier_calls
+           from prospect_calls p where p.id = $1`,
         [callId],
       )
     ).rows[0];
@@ -105,9 +123,20 @@ export class SupabasePlaybookSource implements PlaybookSource {
       )
     ).rows[0];
 
+    let label = call.display_name ?? call.business ?? 'Unnamed booking';
+    if (this.contactsReadable) {
+      try {
+        const c = (await this.pool.query(`select c.name, c.business_name from prospect_calls p join contacts c on c.id = p.contact_id where p.id = $1`, [callId])).rows[0];
+        if (c?.name) label = [c.name, c.business_name].filter(Boolean).join(' - ');
+      } catch (err: any) {
+        if (err?.code === '42501') this.contactsReadable = false;
+      }
+    }
+
     return buildBundle({
       callId,
-      label: call.display_name ?? call.business ?? 'Unnamed booking',
+      label,
+      earlierCalls: call.earlier_calls,
       business: call.business,
       callNotes: call.call_notes,
       playbook: pb ? { title: pb.title, html: pb.content_html, createdAt: pb.created_at.toISOString() } : null,
@@ -119,6 +148,8 @@ export class SupabasePlaybookSource implements PlaybookSource {
 export interface RawCallMaterial {
   callId: string | null;
   label: string;
+  /** Completed calls with the same contact before this one. Unknown (replays, fixtures) counts as none. */
+  earlierCalls?: number;
   business: string | null;
   callNotes: string | null;
   playbook: { title: string; html: string; createdAt: string } | null;
@@ -143,10 +174,12 @@ export function buildBundle(m: RawCallMaterial): PlaybookBundle {
   if (prospectContext.length > MAX_CONTEXT_CHARS) prospectContext = prospectContext.slice(0, MAX_CONTEXT_CHARS) + '\n[truncated]';
 
   const callType = guessCallType({ business: m.business, hasPlaybook: !!prospectPlaybook, playbookTitle: m.playbook?.title });
+  const followUpTitle = /follow-?up|review|catch-?up|check-?in|decision|second call|go-?live|walkthrough/i.test(m.playbook?.title ?? '');
+  const stage: CallStage = (m.earlierCalls ?? 0) > 0 || followUpTitle ? 'follow_up' : 'first';
   const sector = prospectPlaybook ? null : guessSector(m.business);
   if (sector) warnings.push(`Using the nearest sector playbook: ${sector}.`);
 
-  return { callId: m.callId, label: m.label, callType, prospectPlaybook, prospectContext, sector, warnings };
+  return { callId: m.callId, label: m.label, callType, stage, prospectPlaybook, prospectContext, sector, warnings };
 }
 
 function makePool(url: string) {

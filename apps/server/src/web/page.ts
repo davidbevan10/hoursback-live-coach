@@ -72,6 +72,8 @@ export const COACH_PAGE = /* html */ `<!doctype html>
       <label for="booking">Booking</label><select id="booking"></select>
       <label for="calltype">Call type</label>
       <select id="calltype"><option value="sme_discovery">SME discovery (15 min)</option><option value="enterprise_intro">Enterprise intro (20 min)</option><option value="other">Other (prospect playbook only)</option></select>
+      <label for="stage">Stage</label>
+      <select id="stage"><option value="first">First call (explore, don't push)</option><option value="follow_up">Follow-up (ask directly)</option></select>
       <label>Cue rate</label><div class="seg" id="rate"><button data-r="conservative">Fewer</button><button data-r="balanced">Balanced</button><button data-r="proactive">More</button></div>
       <div id="warnings"></div>
     </section>
@@ -111,6 +113,7 @@ function render() {
     $('who').textContent = b.label;
     $('playbook').textContent = b.playbookTitle ? 'Playbook: ' + b.playbookTitle : 'No prospect playbook';
     $('calltype').value = b.callType;
+    if (b.stage) $('stage').value = b.stage;
     $('warnings').innerHTML = (b.warnings || []).map((w) => '<div class="warnline">' + esc(w) + '</div>').join('');
   }
 }
@@ -132,6 +135,7 @@ const post = (url, body) => fetch(url, { method: 'POST', credentials: 'same-orig
 window.feedback = (id, label) => { S.feedback[id] = label; render(); post('/api/feedback', { cueId: id, label }); };
 $('booking').onchange = (e) => post('/api/call', { callId: e.target.value || null });
 $('calltype').onchange = (e) => post('/api/call', { callType: e.target.value });
+$('stage').onchange = (e) => post('/api/call', { stage: e.target.value });
 document.querySelectorAll('#rate button').forEach((b) => (b.onclick = () => { setRate(b.dataset.r); post('/api/settings', { cueRate: b.dataset.r }); }));
 
 function connect() {

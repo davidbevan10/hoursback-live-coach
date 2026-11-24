@@ -34,7 +34,7 @@ export type SessionEvent =
   | { kind: 'cue'; cue: ShownCue }
   | { kind: 'state'; state: CallState }
   | { kind: 'eval'; at: number; outcome: 'none' | 'below_threshold' | 'invalid' | 'no_ref' | 'duplicate' | 'shown' | 'error'; detail?: string; latencyMs?: number; triggeredBy: Trigger }
-  | { kind: 'bundle'; bundle: Pick<PlaybookBundle, 'callId' | 'label' | 'callType' | 'sector' | 'warnings'> & { playbookTitle: string | null } };
+  | { kind: 'bundle'; bundle: Pick<PlaybookBundle, 'callId' | 'label' | 'callType' | 'stage' | 'sector' | 'warnings'> & { playbookTitle: string | null } };
 
 /** Words that justify evaluating early, inside the cooldown (brief, section 5). */
 const KEYWORDS = /\b(price|pricing|cost|costs|budget|expensive|afford|how much|already use|already have|we use|not sure|need to (talk|speak|check) (to|with)|run it by|sign[- ]off|board|competitor|in-house|it team|send me|next steps?|timeline|too busy)\b/i;
@@ -236,7 +236,7 @@ export class CoachSession {
 }
 
 export function summary(b: PlaybookBundle) {
-  return { callId: b.callId, label: b.label, callType: b.callType, sector: b.sector, warnings: b.warnings, playbookTitle: b.prospectPlaybook?.title ?? null };
+  return { callId: b.callId, label: b.label, callType: b.callType, stage: b.stage, sector: b.sector, warnings: b.warnings, playbookTitle: b.prospectPlaybook?.title ?? null };
 }
 
 const STOP = new Set('a an and are as at be but by do for from has have how i if in is it its me my of on or our so that the their them they this to was we what when where which who why will with you your'.split(' '));
